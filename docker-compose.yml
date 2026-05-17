@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lexiclass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lexiclass
+      POSTGRES_USER: lexiclass
+      POSTGRES_PASSWORD: lexiclass
+    ports:
+      - "5432:5432"
+    volumes:
+      - lexiclass-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lexiclass -d lexiclass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lexiclass-postgres-data:
