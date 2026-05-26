@@ -29,6 +29,13 @@ Start PostgreSQL:
 docker compose up -d
 ```
 
+Apply migrations and load demo data:
+
+```powershell
+pnpm prisma:migrate
+pnpm prisma:seed
+```
+
 Run the API in development:
 
 ```powershell
@@ -47,6 +54,24 @@ Health check:
 GET http://localhost:4000/api/v1/health
 ```
 
+## Demo Seed Data
+
+Seed credentials:
+
+```text
+teacher@example.com / password
+student@example.com / password
+```
+
+Demo class invite codes:
+
+```text
+A2-7KQ9
+B1-4MVP
+```
+
+The seed creates one teacher, two students, two classes, two word sets, words, enrollments, assignments, and sample practice attempts for analytics.
+
 ## Verification
 
 ```powershell
@@ -55,9 +80,17 @@ pnpm test
 pnpm build
 ```
 
-## Planned Prisma Commands
+With PostgreSQL seeded and the API running on port `4000`, run the smoke flow:
 
-These scripts are available for the database checkpoint:
+```powershell
+pnpm smoke
+```
+
+The smoke script checks health, teacher login/classes, student login/assignments, student word-set details, practice submission, student progress, and teacher analytics.
+
+## Prisma Commands
+
+Useful database scripts:
 
 ```powershell
 pnpm prisma:generate
