@@ -80,6 +80,14 @@ pnpm test
 pnpm build
 ```
 
+With PostgreSQL seeded and the API running on port `4000`, run the smoke flow:
+
+```powershell
+pnpm smoke
+```
+
+The smoke script checks health, teacher login/classes, student login/assignments, student word-set details, practice submission, student progress, and teacher analytics.
+
 ## Prisma Commands
 
 Useful database scripts:
