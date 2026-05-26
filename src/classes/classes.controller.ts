@@ -8,6 +8,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -21,6 +22,8 @@ import { UpdateClassDto } from './dto/update-class.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('teacher')
+@ApiTags('Teacher Classes')
+@ApiBearerAuth()
 @Controller('teacher/classes')
 export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
@@ -96,6 +99,8 @@ export class ClassesController {
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('student')
+@ApiTags('Student Classes')
+@ApiBearerAuth()
 @Controller('student/classes')
 export class StudentClassesController {
   constructor(private readonly classesService: ClassesService) {}

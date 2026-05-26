@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -18,6 +19,8 @@ import { ListAssignmentsQueryDto } from './dto/list-assignments-query.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('teacher')
+@ApiTags('Assignments')
+@ApiBearerAuth()
 @Controller('teacher/assignments')
 export class AssignmentsController {
   constructor(private readonly assignmentsService: AssignmentsService) {}
@@ -41,6 +44,8 @@ export class AssignmentsController {
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('student')
+@ApiTags('Assignments')
+@ApiBearerAuth()
 @Controller()
 export class StudentAssignmentsController {
   constructor(private readonly assignmentsService: AssignmentsService) {}

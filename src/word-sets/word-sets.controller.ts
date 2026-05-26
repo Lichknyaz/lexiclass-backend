@@ -8,6 +8,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -24,6 +25,8 @@ import { WordSetsService } from './word-sets.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('teacher')
+@ApiTags('Word Sets')
+@ApiBearerAuth()
 @Controller('teacher/word-sets')
 export class WordSetsController {
   constructor(private readonly wordSetsService: WordSetsService) {}
