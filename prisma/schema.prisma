@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TEACHER
+  STUDENT
+}
+
+enum PracticeMode {
+  FLASHCARD
+  MULTIPLE_CHOICE
+  WRITING
+}
+
+enum AnswerStatus {
+  CORRECT
+  WRONG
+}
+
+model User {
+  id               String             @id @default(cuid())
+  name             String
+  email            String             @unique
+  passwordHash     String
+  role             UserRole
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  taughtClasses    Class[]            @relation("TeacherClasses")
+  wordSets         WordSet[]          @relation("TeacherWordSets")
+  enrollments      ClassEnrollment[]  @relation("StudentEnrollments")
+  practiceAttempts PracticeAttempt[]  @relation("StudentPracticeAttempts")
+}
+
+model Class {
+  id          String            @id @default(cuid())
+  name        String
+  description String            @default("")
+  level       String            @default("")
+  inviteCode  String            @unique
+  teacherId   String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  teacher     User              @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+  enrollments ClassEnrollment[]
+  assignments Assignment[]
+
+  @@index([teacherId])
+}
+
+model ClassEnrollment {
+  id        String   @id @default(cuid())
+  classId   String
+  studentId String
+  createdAt DateTime @default(now())
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   User     @relation("StudentEnrollments", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@index([studentId])
+}
+
+model WordSet {
+  id          String       @id @default(cuid())
+  title       String
+  description String       @default("")
+  tag         String       @default("")
+  teacherId   String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  teacher     User         @relation("TeacherWordSets", fields: [teacherId], references: [id], onDelete: Cascade)
+  words       Word[]
+  assignments Assignment[]
+
+  @@index([teacherId])
+}
+
+model Word {
+  id              String            @id @default(cuid())
+  wordSetId       String
+  term            String
+  translation     String
+  exampleSentence String            @default("")
+  transcription   String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  wordSet         WordSet           @relation(fields: [wordSetId], references: [id], onDelete: Cascade)
+  practiceAttempts PracticeAttempt[]
+
+  @@unique([wordSetId, term])
+  @@index([wordSetId])
+}
+
+model Assignment {
+  id               String            @id @default(cuid())
+  classId          String
+  wordSetId        String
+  assignedAt       DateTime          @default(now())
+  class            Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  wordSet          WordSet           @relation(fields: [wordSetId], references: [id], onDelete: Cascade)
+  practiceAttempts PracticeAttempt[]
+
+  @@unique([classId, wordSetId])
+  @@index([wordSetId])
+}
+
+model PracticeAttempt {
+  id           String       @id @default(cuid())
+  assignmentId String
+  studentId    String
+  wordId       String
+  status       AnswerStatus
+  mode         PracticeMode
+  answeredAt   DateTime
+  createdAt    DateTime     @default(now())
+  assignment   Assignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      User         @relation("StudentPracticeAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  word         Word         @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([wordId])
+  @@index([answeredAt])
+}
