@@ -1,0 +1,60 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import type { AuthUserDto } from '../auth/types';
+import { ClassesService } from './classes.service';
+import { CreateClassDto } from './dto/create-class.dto';
+import { UpdateClassDto } from './dto/update-class.dto';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('teacher')
+@Controller('teacher/classes')
+export class ClassesController {
+  constructor(private readonly classesService: ClassesService) {}
+
+  @Get()
+  listClasses(@CurrentUser() user: AuthUserDto) {
+    return this.classesService.listClasses(user.id);
+  }
+
+  @Post()
+  createClass(@CurrentUser() user: AuthUserDto, @Body() input: CreateClassDto) {
+    return this.classesService.createClass(user.id, input);
+  }
+
+  @Get(':classId')
+  getClassDetails(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+  ) {
+    return this.classesService.getClassDetails(user.id, classId);
+  }
+
+  @Put(':classId')
+  updateClass(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Body() input: UpdateClassDto,
+  ) {
+    return this.classesService.updateClass(user.id, classId, input);
+  }
+
+  @Delete(':classId')
+  deleteClass(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+  ) {
+    return this.classesService.deleteClass(user.id, classId);
+  }
+}
