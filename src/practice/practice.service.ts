@@ -20,6 +20,27 @@ export interface PracticeSessionResultDto {
   }>;
 }
 
+interface PracticeAttemptWithWordRecord {
+  wordId: string;
+  status: AnswerStatus;
+  answeredAt: Date;
+  word: {
+    id: string;
+    term: string;
+    translation: string;
+  };
+}
+
+export interface StudentProgressWordDto {
+  id: string;
+  term: string;
+  translation: string;
+  masteryLevel: number;
+  correctCount: number;
+  wrongCount: number;
+  lastPracticedAt: string | null;
+}
+
 @Injectable()
 export class PracticeService {
   constructor(private readonly prisma: PrismaService) {}
@@ -80,6 +101,26 @@ export class PracticeService {
 
     return mapPracticeSessionResult(studentId, input);
   }
+
+  async listStudentWordProgress(
+    studentId: string,
+  ): Promise<StudentProgressWordDto[]> {
+    const attempts = await this.prisma.practiceAttempt.findMany({
+      where: { studentId },
+      include: {
+        word: {
+          select: {
+            id: true,
+            term: true,
+            translation: true,
+          },
+        },
+      },
+      orderBy: { answeredAt: 'desc' },
+    });
+
+    return mapStudentWordProgress(attempts);
+  }
 }
 
 function mapPracticeSessionResult(
@@ -135,4 +176,65 @@ function toPrismaPracticeMode(mode: PracticeModeDto): PracticeMode {
   }
 
   return PracticeMode.FLASHCARD;
+}
+
+function mapStudentWordProgress(
+  attempts: PracticeAttemptWithWordRecord[],
+): StudentProgressWordDto[] {
+  const progressByWord = new Map<
+    string,
+    {
+      id: string;
+      term: string;
+      translation: string;
+      correctCount: number;
+      wrongCount: number;
+      lastPracticedAt: Date;
+    }
+  >();
+
+  for (const attempt of attempts) {
+    const existing = progressByWord.get(attempt.wordId) ?? {
+      id: attempt.word.id,
+      term: attempt.word.term,
+      translation: attempt.word.translation,
+      correctCount: 0,
+      wrongCount: 0,
+      lastPracticedAt: attempt.answeredAt,
+    };
+
+    if (attempt.status === AnswerStatus.CORRECT) {
+      existing.correctCount += 1;
+    } else {
+      existing.wrongCount += 1;
+    }
+
+    if (attempt.answeredAt > existing.lastPracticedAt) {
+      existing.lastPracticedAt = attempt.answeredAt;
+    }
+
+    progressByWord.set(attempt.wordId, existing);
+  }
+
+  return Array.from(progressByWord.values())
+    .sort(
+      (first, second) =>
+        second.lastPracticedAt.getTime() - first.lastPracticedAt.getTime(),
+    )
+    .map((progress) => {
+      const totalAnswers = progress.correctCount + progress.wrongCount;
+
+      return {
+        id: progress.id,
+        term: progress.term,
+        translation: progress.translation,
+        masteryLevel:
+          totalAnswers === 0
+            ? 0
+            : Math.round((progress.correctCount / totalAnswers) * 100),
+        correctCount: progress.correctCount,
+        wrongCount: progress.wrongCount,
+        lastPracticedAt: progress.lastPracticedAt.toISOString(),
+      };
+    });
 }

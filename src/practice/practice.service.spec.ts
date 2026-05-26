@@ -141,6 +141,70 @@ describe('PracticeService', () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('returns student word progress aggregated from attempts', async () => {
+    prisma.practiceAttempt.findMany.mockResolvedValue([
+      createPracticeAttemptRecord({
+        id: 'attempt-1',
+        wordId: 'word-1',
+        status: 'CORRECT',
+        answeredAt: new Date('2026-05-26T10:00:00.000Z'),
+      }),
+      createPracticeAttemptRecord({
+        id: 'attempt-2',
+        wordId: 'word-1',
+        status: 'WRONG',
+        answeredAt: new Date('2026-05-26T10:05:00.000Z'),
+      }),
+      createPracticeAttemptRecord({
+        id: 'attempt-3',
+        wordId: 'word-2',
+        status: 'CORRECT',
+        answeredAt: new Date('2026-05-26T10:10:00.000Z'),
+        word: {
+          id: 'word-2',
+          term: 'arrive',
+          translation: 'come',
+        },
+      }),
+    ]);
+
+    const result = await service.listStudentWordProgress('student-1');
+
+    expect(prisma.practiceAttempt.findMany).toHaveBeenCalledWith({
+      where: { studentId: 'student-1' },
+      include: {
+        word: {
+          select: {
+            id: true,
+            term: true,
+            translation: true,
+          },
+        },
+      },
+      orderBy: { answeredAt: 'desc' },
+    });
+    expect(result).toEqual([
+      {
+        id: 'word-2',
+        term: 'arrive',
+        translation: 'come',
+        masteryLevel: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        lastPracticedAt: '2026-05-26T10:10:00.000Z',
+      },
+      {
+        id: 'word-1',
+        term: 'depart',
+        translation: 'leave',
+        masteryLevel: 50,
+        correctCount: 1,
+        wrongCount: 1,
+        lastPracticedAt: '2026-05-26T10:05:00.000Z',
+      },
+    ]);
+  });
 });
 
 interface MockPrisma {
@@ -149,6 +213,7 @@ interface MockPrisma {
   };
   practiceAttempt: {
     createMany: jest.Mock;
+    findMany: jest.Mock;
   };
 }
 
@@ -159,6 +224,31 @@ function createMockPrisma(): MockPrisma {
     },
     practiceAttempt: {
       createMany: jest.fn(),
+      findMany: jest.fn(),
+    },
+  };
+}
+
+function createPracticeAttemptRecord(input: {
+  id: string;
+  wordId: string;
+  status: 'CORRECT' | 'WRONG';
+  answeredAt: Date;
+  word?: {
+    id: string;
+    term: string;
+    translation: string;
+  };
+}) {
+  return {
+    id: input.id,
+    wordId: input.wordId,
+    status: input.status,
+    answeredAt: input.answeredAt,
+    word: input.word ?? {
+      id: 'word-1',
+      term: 'depart',
+      translation: 'leave',
     },
   };
 }

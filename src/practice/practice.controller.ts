@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -19,5 +19,17 @@ export class PracticeController {
     @Body() input: PracticeSessionDto,
   ) {
     return this.practiceService.savePracticeSession(user.id, input);
+  }
+}
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('student')
+@Controller('student/progress')
+export class StudentProgressController {
+  constructor(private readonly practiceService: PracticeService) {}
+
+  @Get('words')
+  listWordProgress(@CurrentUser() user: AuthUserDto) {
+    return this.practiceService.listStudentWordProgress(user.id);
   }
 }

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { PracticeController } from './practice.controller';
+import {
+  PracticeController,
+  StudentProgressController,
+} from './practice.controller';
 import { PracticeService } from './practice.service';
 
 @Module({
-  controllers: [PracticeController],
+  controllers: [PracticeController, StudentProgressController],
   providers: [PracticeService],
   exports: [PracticeService],
 })
