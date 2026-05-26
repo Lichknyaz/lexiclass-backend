@@ -11,6 +11,10 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+prisma/*.js
+prisma/*.js.map
+prisma/*.d.ts
+!prisma/seed.ts
 
 # Logs
 *.log
