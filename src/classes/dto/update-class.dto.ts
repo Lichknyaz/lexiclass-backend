@@ -1,0 +1,13 @@
+import { IsString, MinLength } from 'class-validator';
+
+export class UpdateClassDto {
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
+  @IsString()
+  description!: string;
+
+  @IsString()
+  level!: string;
+}
