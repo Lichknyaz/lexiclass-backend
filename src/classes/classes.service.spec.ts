@@ -130,6 +130,109 @@ describe('ClassesService', () => {
       service.deleteClass('teacher-1', 'class-1'),
     ).resolves.toEqual({ id: 'class-1' });
   });
+
+  it('adds a student to an owned class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.create.mockResolvedValue({
+      id: 'student-1',
+      name: 'Student',
+      email: 'student@example.com',
+    });
+    prisma.classEnrollment.upsert.mockResolvedValue({
+      student: {
+        id: 'student-1',
+        name: 'Student',
+        email: 'student@example.com',
+      },
+    });
+
+    const result = await service.addStudent('teacher-1', 'class-1', {
+      name: 'Student',
+      email: 'student@example.com',
+    });
+
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Student',
+        email: 'student@example.com',
+        role: 'STUDENT',
+      }),
+    });
+    expect(prisma.classEnrollment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          classId_studentId: {
+            classId: 'class-1',
+            studentId: 'student-1',
+          },
+        },
+      }),
+    );
+    expect(result).toEqual({
+      id: 'student-1',
+      name: 'Student',
+      email: 'student@example.com',
+      progress: 0,
+      correctAnswers: 0,
+      wrongAnswers: 0,
+      lastPracticedAt: null,
+    });
+  });
+
+  it('updates an enrolled student in an owned class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.classEnrollment.findUnique.mockResolvedValue({
+      studentId: 'student-1',
+    });
+    prisma.user.update.mockResolvedValue({
+      id: 'student-1',
+      name: 'Updated Student',
+      email: 'updated@example.com',
+    });
+
+    const result = await service.updateStudent(
+      'teacher-1',
+      'class-1',
+      'student-1',
+      {
+        name: 'Updated Student',
+        email: 'updated@example.com',
+      },
+    );
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'student-1' },
+      data: {
+        name: 'Updated Student',
+        email: 'updated@example.com',
+      },
+    });
+    expect(result.email).toBe('updated@example.com');
+  });
+
+  it('removes a student enrollment from an owned class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.classEnrollment.findUnique.mockResolvedValue({
+      studentId: 'student-1',
+    });
+    prisma.classEnrollment.delete.mockResolvedValue({
+      studentId: 'student-1',
+    });
+
+    await expect(
+      service.removeStudent('teacher-1', 'class-1', 'student-1'),
+    ).resolves.toEqual({ studentId: 'student-1' });
+  });
 });
 
 interface MockPrisma {
@@ -138,6 +241,16 @@ interface MockPrisma {
     findMany: jest.Mock;
     findUnique: jest.Mock;
     update: jest.Mock;
+    delete: jest.Mock;
+  };
+  user: {
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+  };
+  classEnrollment: {
+    findUnique: jest.Mock;
+    upsert: jest.Mock;
     delete: jest.Mock;
   };
 }
@@ -149,6 +262,16 @@ function createMockPrisma(): MockPrisma {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    classEnrollment: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
       delete: jest.fn(),
     },
   };

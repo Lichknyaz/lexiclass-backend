@@ -1,11 +1,13 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Class } from '@prisma/client';
+import { Class, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
 interface ClassSummaryRecord {
@@ -154,6 +156,86 @@ export class ClassesService {
     return { id: classId };
   }
 
+  async addStudent(
+    teacherId: string,
+    classId: string,
+    input: StudentDto,
+  ): Promise<ClassDetailsDto['studentsList'][number]> {
+    await this.assertTeacherOwnsClass(teacherId, classId);
+    const email = normalizeEmail(input.email);
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser && existingUser.role !== UserRole.STUDENT) {
+      throw new ConflictException('Only student users can be added to classes');
+    }
+
+    const student =
+      existingUser ??
+      (await this.prisma.user.create({
+        data: {
+          name: input.name.trim(),
+          email,
+          passwordHash: '',
+          role: UserRole.STUDENT,
+        },
+      }));
+
+    const enrollment = await this.prisma.classEnrollment.upsert({
+      where: {
+        classId_studentId: {
+          classId,
+          studentId: student.id,
+        },
+      },
+      create: {
+        classId,
+        studentId: student.id,
+      },
+      update: {},
+      include: {
+        student: true,
+      },
+    });
+
+    return mapStudent(enrollment.student);
+  }
+
+  async updateStudent(
+    teacherId: string,
+    classId: string,
+    studentId: string,
+    input: StudentDto,
+  ): Promise<ClassDetailsDto['studentsList'][number]> {
+    await this.assertTeacherOwnsClass(teacherId, classId);
+    await this.getEnrollmentOrThrow(classId, studentId);
+    const updatedStudent = await this.prisma.user.update({
+      where: { id: studentId },
+      data: {
+        name: input.name.trim(),
+        email: normalizeEmail(input.email),
+      },
+    });
+
+    return mapStudent(updatedStudent);
+  }
+
+  async removeStudent(teacherId: string, classId: string, studentId: string) {
+    await this.assertTeacherOwnsClass(teacherId, classId);
+    await this.getEnrollmentOrThrow(classId, studentId);
+    await this.prisma.classEnrollment.delete({
+      where: {
+        classId_studentId: {
+          classId,
+          studentId,
+        },
+      },
+    });
+
+    return { studentId };
+  }
+
   private async assertTeacherOwnsClass(teacherId: string, classId: string) {
     const classItem = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -187,6 +269,23 @@ export class ClassesService {
     }
 
     return classDetails;
+  }
+
+  private async getEnrollmentOrThrow(classId: string, studentId: string) {
+    const enrollment = await this.prisma.classEnrollment.findUnique({
+      where: {
+        classId_studentId: {
+          classId,
+          studentId,
+        },
+      },
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException('Student enrollment not found');
+    }
+
+    return enrollment;
   }
 }
 
@@ -250,15 +349,9 @@ function mapClassDetails(classItem: ClassDetailsRecord): ClassDetailsDto {
     inviteCode: classItem.inviteCode,
     level: classItem.level,
     description: classItem.description,
-    studentsList: classItem.enrollments.map((enrollment) => ({
-      id: enrollment.student.id,
-      name: enrollment.student.name,
-      email: enrollment.student.email,
-      progress: 0,
-      correctAnswers: 0,
-      wrongAnswers: 0,
-      lastPracticedAt: null,
-    })),
+    studentsList: classItem.enrollments.map((enrollment) =>
+      mapStudent(enrollment.student),
+    ),
     wordSetsList: classItem.assignments.map((assignment) => ({
       id: assignment.id,
       classId: classItem.id,
@@ -270,6 +363,22 @@ function mapClassDetails(classItem: ClassDetailsRecord): ClassDetailsDto {
     })),
     problemWords: [],
   };
+}
+
+function mapStudent(student: { id: string; name: string; email: string }) {
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    progress: 0,
+    correctAnswers: 0,
+    wrongAnswers: 0,
+    lastPracticedAt: null,
+  };
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
 }
 
 function createInviteCode() {

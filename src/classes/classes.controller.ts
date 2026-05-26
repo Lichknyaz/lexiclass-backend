@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import type { AuthUserDto } from '../auth/types';
 import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -56,5 +57,38 @@ export class ClassesController {
     @Param('classId') classId: string,
   ) {
     return this.classesService.deleteClass(user.id, classId);
+  }
+
+  @Post(':classId/students')
+  addStudent(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Body() input: StudentDto,
+  ) {
+    return this.classesService.addStudent(user.id, classId, input);
+  }
+
+  @Put(':classId/students/:studentId')
+  updateStudent(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+    @Body() input: StudentDto,
+  ) {
+    return this.classesService.updateStudent(
+      user.id,
+      classId,
+      studentId,
+      input,
+    );
+  }
+
+  @Delete(':classId/students/:studentId')
+  removeStudent(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.classesService.removeStudent(user.id, classId, studentId);
   }
 }
