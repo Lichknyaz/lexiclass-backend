@@ -1,0 +1,32 @@
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import type { AuthUserDto } from '../auth/types';
+import { AssignmentsService } from './assignments.service';
+import { CreateAssignmentDto } from './dto/create-assignment.dto';
+import { ListAssignmentsQueryDto } from './dto/list-assignments-query.dto';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('teacher')
+@Controller('teacher/assignments')
+export class AssignmentsController {
+  constructor(private readonly assignmentsService: AssignmentsService) {}
+
+  @Post()
+  createAssignment(
+    @CurrentUser() user: AuthUserDto,
+    @Body() input: CreateAssignmentDto,
+  ) {
+    return this.assignmentsService.createAssignment(user.id, input);
+  }
+
+  @Get()
+  listAssignments(
+    @CurrentUser() user: AuthUserDto,
+    @Query() query: ListAssignmentsQueryDto,
+  ) {
+    return this.assignmentsService.listTeacherAssignments(user.id, query);
+  }
+}
