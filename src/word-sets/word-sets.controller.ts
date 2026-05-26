@@ -15,6 +15,11 @@ import { RolesGuard } from '../auth/roles.guard';
 import type { AuthUserDto } from '../auth/types';
 import { CreateWordSetDto } from './dto/create-word-set.dto';
 import { UpdateWordSetDto } from './dto/update-word-set.dto';
+import {
+  AddWordsDto,
+  BulkDeleteWordsDto,
+  WordInputDto,
+} from './dto/word.dto';
 import { WordSetsService } from './word-sets.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -59,5 +64,42 @@ export class WordSetsController {
     @Param('wordSetId') wordSetId: string,
   ) {
     return this.wordSetsService.deleteWordSet(user.id, wordSetId);
+  }
+
+  @Post(':wordSetId/words')
+  addWords(
+    @CurrentUser() user: AuthUserDto,
+    @Param('wordSetId') wordSetId: string,
+    @Body() input: AddWordsDto,
+  ) {
+    return this.wordSetsService.addWords(user.id, wordSetId, input);
+  }
+
+  @Put(':wordSetId/words/:wordId')
+  updateWord(
+    @CurrentUser() user: AuthUserDto,
+    @Param('wordSetId') wordSetId: string,
+    @Param('wordId') wordId: string,
+    @Body() input: WordInputDto,
+  ) {
+    return this.wordSetsService.updateWord(user.id, wordSetId, wordId, input);
+  }
+
+  @Delete(':wordSetId/words/:wordId')
+  deleteWord(
+    @CurrentUser() user: AuthUserDto,
+    @Param('wordSetId') wordSetId: string,
+    @Param('wordId') wordId: string,
+  ) {
+    return this.wordSetsService.deleteWord(user.id, wordSetId, wordId);
+  }
+
+  @Post(':wordSetId/words/bulk-delete')
+  bulkDeleteWords(
+    @CurrentUser() user: AuthUserDto,
+    @Param('wordSetId') wordSetId: string,
+    @Body() input: BulkDeleteWordsDto,
+  ) {
+    return this.wordSetsService.bulkDeleteWords(user.id, wordSetId, input);
   }
 }

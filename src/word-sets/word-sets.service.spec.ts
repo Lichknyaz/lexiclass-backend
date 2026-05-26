@@ -154,6 +154,100 @@ describe('WordSetsService', () => {
       service.deleteWordSet('teacher-1', 'word-set-1'),
     ).resolves.toEqual({ id: 'word-set-1' });
   });
+
+  it('adds words to an owned word set', async () => {
+    prisma.wordSet.findUnique.mockResolvedValue({
+      id: 'word-set-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.create.mockResolvedValueOnce(createWordRecord('word-1'));
+
+    const result = await service.addWords('teacher-1', 'word-set-1', {
+      words: [
+        {
+          term: ' depart ',
+          translation: ' leave ',
+          exampleSentence: ' We depart at noon. ',
+          transcription: null,
+        },
+      ],
+    });
+
+    expect(prisma.word.create).toHaveBeenCalledWith({
+      data: {
+        wordSetId: 'word-set-1',
+        term: 'depart',
+        translation: 'leave',
+        exampleSentence: 'We depart at noon.',
+        transcription: null,
+      },
+    });
+    expect(result).toEqual([mapExpectedWord('word-1')]);
+  });
+
+  it('updates a word in an owned word set', async () => {
+    prisma.wordSet.findUnique.mockResolvedValue({
+      id: 'word-set-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findFirst.mockResolvedValue({
+      id: 'word-1',
+      wordSetId: 'word-set-1',
+    });
+    prisma.word.update.mockResolvedValue(createWordRecord('word-1'));
+
+    const result = await service.updateWord('teacher-1', 'word-set-1', 'word-1', {
+      term: 'depart',
+      translation: 'leave',
+      exampleSentence: 'We depart at noon.',
+      transcription: null,
+    });
+
+    expect(prisma.word.update).toHaveBeenCalledWith({
+      where: { id: 'word-1' },
+      data: {
+        term: 'depart',
+        translation: 'leave',
+        exampleSentence: 'We depart at noon.',
+        transcription: null,
+      },
+    });
+    expect(result).toEqual(mapExpectedWord('word-1'));
+  });
+
+  it('deletes a word from an owned word set', async () => {
+    prisma.wordSet.findUnique.mockResolvedValue({
+      id: 'word-set-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findFirst.mockResolvedValue({
+      id: 'word-1',
+      wordSetId: 'word-set-1',
+    });
+    prisma.word.delete.mockResolvedValue({ id: 'word-1' });
+
+    await expect(
+      service.deleteWord('teacher-1', 'word-set-1', 'word-1'),
+    ).resolves.toEqual({ wordId: 'word-1' });
+  });
+
+  it('bulk deletes words from an owned word set', async () => {
+    prisma.wordSet.findUnique.mockResolvedValue({
+      id: 'word-set-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findMany.mockResolvedValue([
+      { id: 'word-1', wordSetId: 'word-set-1' },
+      { id: 'word-2', wordSetId: 'word-set-1' },
+    ]);
+    prisma.word.deleteMany.mockResolvedValue({ count: 2 });
+
+    await expect(
+      service.bulkDeleteWords('teacher-1', 'word-set-1', {
+        wordIds: ['word-1', 'word-2'],
+      }),
+    ).resolves.toEqual({ wordIds: ['word-1', 'word-2'] });
+  });
 });
 
 interface MockPrisma {
@@ -163,6 +257,14 @@ interface MockPrisma {
     create: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
+  };
+  word: {
+    create: jest.Mock;
+    findFirst: jest.Mock;
+    findMany: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+    deleteMany: jest.Mock;
   };
 }
 
@@ -174,6 +276,14 @@ function createMockPrisma(): MockPrisma {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+    },
+    word: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
 }
@@ -202,5 +312,28 @@ function createWordSetDetailsRecord() {
         },
       },
     ],
+  };
+}
+
+function createWordRecord(id: string) {
+  return {
+    id,
+    term: 'depart',
+    translation: 'leave',
+    exampleSentence: 'We depart at noon.',
+    transcription: null,
+  };
+}
+
+function mapExpectedWord(id: string) {
+  return {
+    id,
+    term: 'depart',
+    translation: 'leave',
+    exampleSentence: 'We depart at noon.',
+    transcription: null,
+    masteryLevel: 0,
+    correctAnswers: 0,
+    wrongAnswers: 0,
   };
 }

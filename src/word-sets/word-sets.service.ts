@@ -7,6 +7,7 @@ import { WordSet } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWordSetDto } from './dto/create-word-set.dto';
 import { UpdateWordSetDto } from './dto/update-word-set.dto';
+import { AddWordsDto, BulkDeleteWordsDto, WordInputDto } from './dto/word.dto';
 
 interface WordSetSummaryRecord {
   id: string;
@@ -31,6 +32,14 @@ interface WordSetDetailsRecord extends WordSet {
       enrollments: unknown[];
     };
   }>;
+}
+
+interface WordRecord {
+  id: string;
+  term: string;
+  translation: string;
+  exampleSentence: string;
+  transcription: string | null;
 }
 
 export interface WordSetSummaryDto {
@@ -133,6 +142,86 @@ export class WordSetsService {
     return { id: wordSetId };
   }
 
+  async addWords(
+    teacherId: string,
+    wordSetId: string,
+    input: AddWordsDto,
+  ): Promise<WordDto[]> {
+    await this.assertTeacherOwnsWordSet(teacherId, wordSetId);
+
+    const words = await Promise.all(
+      input.words.map((word) =>
+        this.prisma.word.create({
+          data: {
+            wordSetId,
+            ...mapWordInput(word),
+          },
+        }),
+      ),
+    );
+
+    return words.map(mapWord);
+  }
+
+  async updateWord(
+    teacherId: string,
+    wordSetId: string,
+    wordId: string,
+    input: WordInputDto,
+  ): Promise<WordDto> {
+    await this.assertTeacherOwnsWordSet(teacherId, wordSetId);
+    await this.getWordInSetOrThrow(wordSetId, wordId);
+
+    const word = await this.prisma.word.update({
+      where: { id: wordId },
+      data: mapWordInput(input),
+    });
+
+    return mapWord(word);
+  }
+
+  async deleteWord(teacherId: string, wordSetId: string, wordId: string) {
+    await this.assertTeacherOwnsWordSet(teacherId, wordSetId);
+    await this.getWordInSetOrThrow(wordSetId, wordId);
+    await this.prisma.word.delete({
+      where: { id: wordId },
+    });
+
+    return { wordId };
+  }
+
+  async bulkDeleteWords(
+    teacherId: string,
+    wordSetId: string,
+    input: BulkDeleteWordsDto,
+  ) {
+    await this.assertTeacherOwnsWordSet(teacherId, wordSetId);
+    const words = await this.prisma.word.findMany({
+      where: {
+        id: { in: input.wordIds },
+        wordSetId,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const foundIds = new Set(words.map((word) => word.id));
+    const missingWordId = input.wordIds.find((wordId) => !foundIds.has(wordId));
+
+    if (missingWordId) {
+      throw new NotFoundException('Word not found');
+    }
+
+    await this.prisma.word.deleteMany({
+      where: {
+        id: { in: input.wordIds },
+        wordSetId,
+      },
+    });
+
+    return { wordIds: input.wordIds };
+  }
+
   private async assertTeacherOwnsWordSet(
     teacherId: string,
     wordSetId: string,
@@ -169,6 +258,21 @@ export class WordSetsService {
     }
 
     return wordSet;
+  }
+
+  private async getWordInSetOrThrow(wordSetId: string, wordId: string) {
+    const word = await this.prisma.word.findFirst({
+      where: {
+        id: wordId,
+        wordSetId,
+      },
+    });
+
+    if (!word) {
+      throw new NotFoundException('Word not found');
+    }
+
+    return word;
   }
 }
 
@@ -225,7 +329,7 @@ function mapWordSetDetails(wordSet: WordSetDetailsRecord): WordSetDetailsDto {
   };
 }
 
-function mapWord(word: WordSetDetailsRecord['words'][number]): WordDto {
+function mapWord(word: WordRecord): WordDto {
   return {
     id: word.id,
     term: word.term,
@@ -235,6 +339,15 @@ function mapWord(word: WordSetDetailsRecord['words'][number]): WordDto {
     masteryLevel: 0,
     correctAnswers: 0,
     wrongAnswers: 0,
+  };
+}
+
+function mapWordInput(word: WordInputDto) {
+  return {
+    term: word.term.trim(),
+    translation: word.translation.trim(),
+    exampleSentence: word.exampleSentence.trim(),
+    transcription: word.transcription ? word.transcription.trim() : null,
   };
 }
 
