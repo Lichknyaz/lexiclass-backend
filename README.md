@@ -54,6 +54,14 @@ Health check:
 GET http://localhost:4000/api/v1/health
 ```
 
+Interactive API documentation:
+
+```text
+http://localhost:4000/api/docs
+```
+
+Use the Swagger `Authorize` button with the `accessToken` returned by login.
+
 ## Demo Seed Data
 
 Seed credentials:

@@ -8,11 +8,26 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { AuthUserDto } from '../auth/types';
+import {
+  ClassDetailsResponseDto,
+  ClassSummaryResponseDto,
+  DeleteIdResponseDto,
+  DeleteStudentResponseDto,
+  StudentClassResponseDto,
+  StudentResponseDto,
+} from '../swagger/api-response.dto';
 import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
 import { JoinClassDto } from './dto/join-class.dto';
@@ -21,21 +36,29 @@ import { UpdateClassDto } from './dto/update-class.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('teacher')
+@ApiTags('Teacher Classes')
+@ApiBearerAuth()
 @Controller('teacher/classes')
 export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
   @Get()
+  @ApiOperation({ summary: 'List classes owned by the teacher' })
+  @ApiOkResponse({ type: [ClassSummaryResponseDto] })
   listClasses(@CurrentUser() user: AuthUserDto) {
     return this.classesService.listClasses(user.id);
   }
 
   @Post()
+  @ApiOperation({ summary: 'Create a teacher class' })
+  @ApiCreatedResponse({ type: ClassSummaryResponseDto })
   createClass(@CurrentUser() user: AuthUserDto, @Body() input: CreateClassDto) {
     return this.classesService.createClass(user.id, input);
   }
 
   @Get(':classId')
+  @ApiOperation({ summary: 'Get teacher class details' })
+  @ApiOkResponse({ type: ClassDetailsResponseDto })
   getClassDetails(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -44,6 +67,8 @@ export class ClassesController {
   }
 
   @Put(':classId')
+  @ApiOperation({ summary: 'Update class overview fields' })
+  @ApiOkResponse({ type: ClassDetailsResponseDto })
   updateClass(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -53,6 +78,8 @@ export class ClassesController {
   }
 
   @Delete(':classId')
+  @ApiOperation({ summary: 'Delete a teacher class' })
+  @ApiOkResponse({ type: DeleteIdResponseDto })
   deleteClass(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -61,6 +88,8 @@ export class ClassesController {
   }
 
   @Post(':classId/students')
+  @ApiOperation({ summary: 'Add a student to a teacher class' })
+  @ApiCreatedResponse({ type: StudentResponseDto })
   addStudent(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -70,6 +99,8 @@ export class ClassesController {
   }
 
   @Put(':classId/students/:studentId')
+  @ApiOperation({ summary: 'Update a student in a teacher class' })
+  @ApiOkResponse({ type: StudentResponseDto })
   updateStudent(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -85,6 +116,8 @@ export class ClassesController {
   }
 
   @Delete(':classId/students/:studentId')
+  @ApiOperation({ summary: 'Remove a student from a teacher class' })
+  @ApiOkResponse({ type: DeleteStudentResponseDto })
   removeStudent(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -96,16 +129,22 @@ export class ClassesController {
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('student')
+@ApiTags('Student Classes')
+@ApiBearerAuth()
 @Controller('student/classes')
 export class StudentClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
   @Get()
+  @ApiOperation({ summary: 'List classes joined by the student' })
+  @ApiOkResponse({ type: [StudentClassResponseDto] })
   listClasses(@CurrentUser() user: AuthUserDto) {
     return this.classesService.listStudentClasses(user.id);
   }
 
   @Post('join')
+  @ApiOperation({ summary: 'Join a class by invite code' })
+  @ApiCreatedResponse({ type: StudentClassResponseDto })
   joinClass(@CurrentUser() user: AuthUserDto, @Body() input: JoinClassDto) {
     return this.classesService.joinClass(user.id, input);
   }
