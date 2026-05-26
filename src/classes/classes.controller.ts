@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import type { AuthUserDto } from '../auth/types';
 import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { JoinClassDto } from './dto/join-class.dto';
 import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
@@ -90,5 +91,22 @@ export class ClassesController {
     @Param('studentId') studentId: string,
   ) {
     return this.classesService.removeStudent(user.id, classId, studentId);
+  }
+}
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('student')
+@Controller('student/classes')
+export class StudentClassesController {
+  constructor(private readonly classesService: ClassesService) {}
+
+  @Get()
+  listClasses(@CurrentUser() user: AuthUserDto) {
+    return this.classesService.listStudentClasses(user.id);
+  }
+
+  @Post('join')
+  joinClass(@CurrentUser() user: AuthUserDto, @Body() input: JoinClassDto) {
+    return this.classesService.joinClass(user.id, input);
   }
 }

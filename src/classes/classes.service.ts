@@ -7,6 +7,7 @@ import {
 import { Class, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { JoinClassDto } from './dto/join-class.dto';
 import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
@@ -86,6 +87,39 @@ export interface ClassDetailsDto extends ClassSummaryDto {
     correctAnswers: number;
     affectedStudents: number;
   }>;
+}
+
+interface StudentClassRecord extends Class {
+  teacher: {
+    name: string;
+  };
+  assignments: Array<{
+    id: string;
+    wordSet: {
+      title: string;
+      words: unknown[];
+    };
+  }>;
+}
+
+export interface StudentAssignedWordSetDto {
+  id: string;
+  classId: string;
+  className: string;
+  title: string;
+  words: number;
+  completedWords: number;
+  progress: number;
+  dueLabel: string;
+}
+
+export interface StudentClassDto {
+  id: string;
+  name: string;
+  teacherName: string;
+  level: string;
+  progress: number;
+  wordSets: StudentAssignedWordSetDto[];
 }
 
 @Injectable()
@@ -236,6 +270,52 @@ export class ClassesService {
     return { studentId };
   }
 
+  async listStudentClasses(studentId: string): Promise<StudentClassDto[]> {
+    const classes = await this.prisma.class.findMany({
+      where: {
+        enrollments: {
+          some: {
+            studentId,
+          },
+        },
+      },
+      include: studentClassInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return classes.map(mapStudentClass);
+  }
+
+  async joinClass(
+    studentId: string,
+    input: JoinClassDto,
+  ): Promise<StudentClassDto> {
+    const classItem = await this.prisma.class.findUnique({
+      where: { inviteCode: normalizeInviteCode(input.inviteCode) },
+      include: studentClassInclude,
+    });
+
+    if (!classItem) {
+      throw new NotFoundException('Class not found');
+    }
+
+    await this.prisma.classEnrollment.upsert({
+      where: {
+        classId_studentId: {
+          classId: classItem.id,
+          studentId,
+        },
+      },
+      create: {
+        classId: classItem.id,
+        studentId,
+      },
+      update: {},
+    });
+
+    return mapStudentClass(classItem);
+  }
+
   private async assertTeacherOwnsClass(teacherId: string, classId: string) {
     const classItem = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -333,6 +413,26 @@ const classDetailsInclude = {
   },
 };
 
+const studentClassInclude = {
+  teacher: {
+    select: {
+      name: true,
+    },
+  },
+  assignments: {
+    include: {
+      wordSet: {
+        include: {
+          words: true,
+        },
+      },
+    },
+    orderBy: {
+      assignedAt: 'desc' as const,
+    },
+  },
+};
+
 function mapClassSummary(classItem: ClassSummaryRecord): ClassSummaryDto {
   return {
     id: classItem.id,
@@ -377,8 +477,32 @@ function mapStudent(student: { id: string; name: string; email: string }) {
   };
 }
 
+function mapStudentClass(classItem: StudentClassRecord): StudentClassDto {
+  return {
+    id: classItem.id,
+    name: classItem.name,
+    teacherName: classItem.teacher.name,
+    level: classItem.level,
+    progress: 0,
+    wordSets: classItem.assignments.map((assignment) => ({
+      id: assignment.id,
+      classId: classItem.id,
+      className: classItem.name,
+      title: assignment.wordSet.title,
+      words: assignment.wordSet.words.length,
+      completedWords: 0,
+      progress: 0,
+      dueLabel: 'No due date',
+    })),
+  };
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function normalizeInviteCode(inviteCode: string) {
+  return inviteCode.trim().toUpperCase();
 }
 
 function createInviteCode() {

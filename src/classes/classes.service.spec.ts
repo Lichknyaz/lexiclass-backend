@@ -233,6 +233,102 @@ describe('ClassesService', () => {
       service.removeStudent('teacher-1', 'class-1', 'student-1'),
     ).resolves.toEqual({ studentId: 'student-1' });
   });
+
+  it('returns only classes joined by the student', async () => {
+    prisma.class.findMany.mockResolvedValue([
+      createStudentClassRecord({
+        id: 'class-1',
+        name: 'English A2',
+        teacherName: 'Teacher',
+      }),
+    ]);
+
+    const result = await service.listStudentClasses('student-1');
+
+    expect(prisma.class.findMany).toHaveBeenCalledWith({
+      where: {
+        enrollments: {
+          some: {
+            studentId: 'student-1',
+          },
+        },
+      },
+      include: expect.any(Object),
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(result).toEqual([
+      {
+        id: 'class-1',
+        name: 'English A2',
+        teacherName: 'Teacher',
+        level: 'A2',
+        progress: 0,
+        wordSets: [
+          {
+            id: 'assignment-1',
+            classId: 'class-1',
+            className: 'English A2',
+            title: 'Travel',
+            words: 2,
+            completedWords: 0,
+            progress: 0,
+            dueLabel: 'No due date',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('joins a class by invite code', async () => {
+    prisma.class.findUnique.mockResolvedValue(
+      createStudentClassRecord({
+        id: 'class-1',
+        name: 'English A2',
+        teacherName: 'Teacher',
+      }),
+    );
+    prisma.classEnrollment.upsert.mockResolvedValue({});
+
+    const result = await service.joinClass('student-1', {
+      inviteCode: ' abc-123 ',
+    });
+
+    expect(prisma.class.findUnique).toHaveBeenCalledWith({
+      where: { inviteCode: 'ABC-123' },
+      include: expect.any(Object),
+    });
+    expect(prisma.classEnrollment.upsert).toHaveBeenCalledWith({
+      where: {
+        classId_studentId: {
+          classId: 'class-1',
+          studentId: 'student-1',
+        },
+      },
+      create: {
+        classId: 'class-1',
+        studentId: 'student-1',
+      },
+      update: {},
+    });
+    expect(result.id).toBe('class-1');
+  });
+
+  it('returns the existing joined class for duplicate joins', async () => {
+    prisma.class.findUnique.mockResolvedValue(
+      createStudentClassRecord({
+        id: 'class-1',
+        name: 'English A2',
+        teacherName: 'Teacher',
+      }),
+    );
+    prisma.classEnrollment.upsert.mockResolvedValue({});
+
+    const result = await service.joinClass('student-1', {
+      inviteCode: 'ABC-123',
+    });
+
+    expect(result.name).toBe('English A2');
+  });
 });
 
 interface MockPrisma {
@@ -291,5 +387,32 @@ function createClassDetailsRecord() {
       enrollments: 0,
       assignments: 0,
     },
+  };
+}
+
+function createStudentClassRecord(input: {
+  id: string;
+  name: string;
+  teacherName: string;
+}) {
+  return {
+    id: input.id,
+    name: input.name,
+    description: 'Core vocabulary',
+    level: 'A2',
+    inviteCode: 'ABC-123',
+    teacherId: 'teacher-1',
+    teacher: {
+      name: input.teacherName,
+    },
+    assignments: [
+      {
+        id: 'assignment-1',
+        wordSet: {
+          title: 'Travel',
+          words: [{ id: 'word-1' }, { id: 'word-2' }],
+        },
+      },
+    ],
   };
 }
