@@ -8,12 +8,26 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { AuthUserDto } from '../auth/types';
+import {
+  BulkDeleteWordsResponseDto,
+  DeleteIdResponseDto,
+  DeleteWordResponseDto,
+  WordResponseDto,
+  WordSetDetailsResponseDto,
+  WordSetSummaryResponseDto,
+} from '../swagger/api-response.dto';
 import { CreateWordSetDto } from './dto/create-word-set.dto';
 import { UpdateWordSetDto } from './dto/update-word-set.dto';
 import {
@@ -32,11 +46,15 @@ export class WordSetsController {
   constructor(private readonly wordSetsService: WordSetsService) {}
 
   @Get()
+  @ApiOperation({ summary: 'List word sets owned by the teacher' })
+  @ApiOkResponse({ type: [WordSetSummaryResponseDto] })
   listWordSets(@CurrentUser() user: AuthUserDto) {
     return this.wordSetsService.listWordSets(user.id);
   }
 
   @Post()
+  @ApiOperation({ summary: 'Create a teacher word set' })
+  @ApiCreatedResponse({ type: WordSetSummaryResponseDto })
   createWordSet(
     @CurrentUser() user: AuthUserDto,
     @Body() input: CreateWordSetDto,
@@ -45,6 +63,8 @@ export class WordSetsController {
   }
 
   @Get(':wordSetId')
+  @ApiOperation({ summary: 'Get teacher word-set details' })
+  @ApiOkResponse({ type: WordSetDetailsResponseDto })
   getWordSetDetails(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -53,6 +73,8 @@ export class WordSetsController {
   }
 
   @Put(':wordSetId')
+  @ApiOperation({ summary: 'Update a teacher word set' })
+  @ApiOkResponse({ type: WordSetDetailsResponseDto })
   updateWordSet(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -62,6 +84,8 @@ export class WordSetsController {
   }
 
   @Delete(':wordSetId')
+  @ApiOperation({ summary: 'Delete a teacher word set' })
+  @ApiOkResponse({ type: DeleteIdResponseDto })
   deleteWordSet(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -70,6 +94,8 @@ export class WordSetsController {
   }
 
   @Post(':wordSetId/words')
+  @ApiOperation({ summary: 'Add words to a teacher word set' })
+  @ApiCreatedResponse({ type: [WordResponseDto] })
   addWords(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -79,6 +105,8 @@ export class WordSetsController {
   }
 
   @Put(':wordSetId/words/:wordId')
+  @ApiOperation({ summary: 'Update a word in a teacher word set' })
+  @ApiOkResponse({ type: WordResponseDto })
   updateWord(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -89,6 +117,8 @@ export class WordSetsController {
   }
 
   @Delete(':wordSetId/words/:wordId')
+  @ApiOperation({ summary: 'Delete a word from a teacher word set' })
+  @ApiOkResponse({ type: DeleteWordResponseDto })
   deleteWord(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
@@ -98,6 +128,8 @@ export class WordSetsController {
   }
 
   @Post(':wordSetId/words/bulk-delete')
+  @ApiOperation({ summary: 'Delete multiple words from a teacher word set' })
+  @ApiOkResponse({ type: BulkDeleteWordsResponseDto })
   bulkDeleteWords(
     @CurrentUser() user: AuthUserDto,
     @Param('wordSetId') wordSetId: string,
