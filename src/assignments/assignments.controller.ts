@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -28,5 +36,28 @@ export class AssignmentsController {
     @Query() query: ListAssignmentsQueryDto,
   ) {
     return this.assignmentsService.listTeacherAssignments(user.id, query);
+  }
+}
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('student')
+@Controller()
+export class StudentAssignmentsController {
+  constructor(private readonly assignmentsService: AssignmentsService) {}
+
+  @Get('student/assignments')
+  listAssignments(@CurrentUser() user: AuthUserDto) {
+    return this.assignmentsService.listStudentAssignments(user.id);
+  }
+
+  @Get('student/word-sets/:assignmentId')
+  getWordSetDetails(
+    @CurrentUser() user: AuthUserDto,
+    @Param('assignmentId') assignmentId: string,
+  ) {
+    return this.assignmentsService.getStudentWordSetDetails(
+      user.id,
+      assignmentId,
+    );
   }
 }
