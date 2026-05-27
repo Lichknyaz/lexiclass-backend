@@ -318,7 +318,7 @@ function mapWordSetDetails(wordSet: WordSetDetailsRecord): WordSetDetailsDto {
   return {
     id: wordSet.id,
     classId: '',
-    className: '',
+    className: wordSet.tag,
     title: wordSet.title,
     description: wordSet.description,
     words: wordSet.words.length,
