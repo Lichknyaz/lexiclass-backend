@@ -19,6 +19,8 @@ describe('ClassesService', () => {
       level: '',
       inviteCode: 'ABC-123',
       teacherId: 'teacher-1',
+      enrollments: [],
+      assignments: [],
       _count: {
         enrollments: 0,
         assignments: 0,
@@ -50,6 +52,8 @@ describe('ClassesService', () => {
       {
         id: 'class-1',
         name: 'English A2',
+        enrollments: [],
+        assignments: [],
         _count: {
           enrollments: 2,
           assignments: 1,
@@ -117,6 +121,147 @@ describe('ClassesService', () => {
       include: expect.any(Object),
     });
     expect(result.id).toBe('class-1');
+  });
+
+  it('maps teacher class progress from saved practice attempts', async () => {
+    prisma.class.findUnique.mockResolvedValue(
+      createClassDetailsRecord({
+        enrollments: [
+          {
+            student: {
+              id: 'student-1',
+              name: 'Test',
+              email: 'test@test.test',
+            },
+          },
+          {
+            student: {
+              id: 'student-2',
+              name: 'Demo Student',
+              email: 'student@example.com',
+            },
+          },
+        ],
+        assignments: [
+          {
+            id: 'assignment-1',
+            wordSet: {
+              id: 'word-set-1',
+              title: 'Test',
+              description: 'test',
+              words: [
+                {
+                  id: 'word-1',
+                  term: 'depart',
+                  translation: 'leave',
+                },
+                {
+                  id: 'word-2',
+                  term: 'arrive',
+                  translation: 'come',
+                },
+              ],
+            },
+            class: {
+              enrollments: [{ studentId: 'student-1' }, { studentId: 'student-2' }],
+            },
+            practiceAttempts: [
+              {
+                studentId: 'student-1',
+                wordId: 'word-1',
+                status: 'CORRECT',
+                answeredAt: new Date('2026-05-29T14:49:48.886Z'),
+              },
+              {
+                studentId: 'student-1',
+                wordId: 'word-2',
+                status: 'WRONG',
+                answeredAt: new Date('2026-05-29T14:50:48.886Z'),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const result = await service.getClassDetails('teacher-1', 'class-1');
+
+    expect(result.progress).toBe(50);
+    expect(result.studentsList).toEqual([
+      expect.objectContaining({
+        id: 'student-1',
+        progress: 100,
+        correctAnswers: 1,
+        wrongAnswers: 1,
+        lastPracticedAt: '2026-05-29T14:50:48.886Z',
+      }),
+      expect.objectContaining({
+        id: 'student-2',
+        progress: 0,
+        correctAnswers: 0,
+        wrongAnswers: 0,
+        lastPracticedAt: null,
+      }),
+    ]);
+    expect(result.wordSetsList[0]).toEqual(
+      expect.objectContaining({
+        averageProgress: 50,
+      }),
+    );
+    expect(result.problemWords).toEqual([
+      {
+        id: 'word-2',
+        term: 'arrive',
+        translation: 'come',
+        wrongAnswers: 1,
+        correctAnswers: 0,
+        affectedStudents: 1,
+      },
+    ]);
+  });
+
+  it('maps teacher class overview progress from saved practice attempts', async () => {
+    prisma.class.findMany.mockResolvedValue([
+      {
+        id: 'class-1',
+        name: 'English B1',
+        enrollments: [
+          { student: { id: 'student-1' } },
+          { student: { id: 'student-2' } },
+        ],
+        assignments: [
+          {
+            wordSet: {
+              words: [{ id: 'word-1' }, { id: 'word-2' }],
+            },
+            practiceAttempts: [
+              {
+                studentId: 'student-1',
+                wordId: 'word-1',
+                status: 'CORRECT',
+              },
+              {
+                studentId: 'student-1',
+                wordId: 'word-2',
+                status: 'WRONG',
+              },
+            ],
+          },
+        ],
+        _count: {
+          enrollments: 2,
+          assignments: 1,
+        },
+      },
+    ]);
+
+    const result = await service.listClasses('teacher-1');
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        progress: 50,
+      }),
+    );
   });
 
   it('deletes a class owned by the teacher', async () => {
@@ -413,7 +558,58 @@ function createMockPrisma(): MockPrisma {
   };
 }
 
-function createClassDetailsRecord() {
+interface ClassDetailsTestRecord {
+  id: string;
+  name: string;
+  description: string;
+  level: string;
+  inviteCode: string;
+  teacherId: string;
+  enrollments: Array<{
+    student: {
+      id: string;
+      name: string;
+      email: string;
+    };
+  }>;
+  assignments: Array<{
+    id: string;
+    wordSet: {
+      id: string;
+      title: string;
+      description: string;
+      words: Array<{
+        id: string;
+        term?: string;
+        translation?: string;
+      }>;
+    };
+    class: {
+      enrollments: Array<{ studentId: string }>;
+    };
+    practiceAttempts: Array<{
+      studentId: string;
+      wordId: string;
+      status: 'CORRECT' | 'WRONG';
+      answeredAt: Date;
+    }>;
+  }>;
+  _count: {
+    enrollments: number;
+    assignments: number;
+  };
+}
+
+function createClassDetailsRecord(
+  overrides: Partial<ClassDetailsTestRecord> = {},
+): ClassDetailsTestRecord {
+  return {
+    ...createClassDetailsRecordBase(),
+    ...overrides,
+  };
+}
+
+function createClassDetailsRecordBase(): ClassDetailsTestRecord {
   return {
     id: 'class-1',
     name: 'English A2',
