@@ -161,6 +161,39 @@ describe('AssignmentsService', () => {
     ]);
   });
 
+  it('maps student assignment progress from saved practice attempts', async () => {
+    prisma.assignment.findMany.mockResolvedValue([
+      createStudentAssignmentRecord({
+        practiceAttempts: [
+          {
+            studentId: 'student-1',
+            wordId: 'word-1',
+            status: 'CORRECT',
+          },
+          {
+            studentId: 'student-1',
+            wordId: 'word-2',
+            status: 'WRONG',
+          },
+          {
+            studentId: 'student-1',
+            wordId: 'word-2',
+            status: 'CORRECT',
+          },
+        ],
+      }),
+    ]);
+
+    const result = await service.listStudentAssignments('student-1');
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        completedWords: 2,
+        progress: 100,
+      }),
+    );
+  });
+
   it('returns student word-set details by accessible assignment id', async () => {
     prisma.assignment.findFirst.mockResolvedValue(createStudentWordSetRecord());
 
@@ -205,6 +238,67 @@ describe('AssignmentsService', () => {
         },
       ],
     });
+  });
+
+  it('maps student word details from saved practice attempts', async () => {
+    prisma.assignment.findFirst.mockResolvedValue(
+      createStudentWordSetRecord({
+        practiceAttempts: [
+          {
+            studentId: 'student-1',
+            wordId: 'word-1',
+            status: 'CORRECT',
+          },
+          {
+            studentId: 'student-1',
+            wordId: 'word-1',
+            status: 'WRONG',
+          },
+          {
+            studentId: 'student-1',
+            wordId: 'word-2',
+            status: 'CORRECT',
+          },
+        ],
+        words: [
+          {
+            id: 'word-1',
+            term: 'depart',
+            translation: 'leave',
+            exampleSentence: 'We depart at noon.',
+            transcription: null,
+          },
+          {
+            id: 'word-2',
+            term: 'arrive',
+            translation: 'come',
+            exampleSentence: 'We arrive at noon.',
+            transcription: null,
+          },
+        ],
+      }),
+    );
+
+    const result = await service.getStudentWordSetDetails(
+      'student-1',
+      'assignment-1',
+    );
+
+    expect(result.averageProgress).toBe(100);
+    expect(result.wordsList).toEqual([
+      expect.objectContaining({
+        id: 'word-1',
+        masteryLevel: 50,
+        correctAnswers: 1,
+        wrongAnswers: 1,
+      }),
+      expect.objectContaining({
+        id: 'word-2',
+        masteryLevel: 100,
+        correctAnswers: 1,
+        wrongAnswers: 0,
+      }),
+    ]);
   });
 
   it('rejects student word-set details for inaccessible assignments', async () => {
@@ -255,7 +349,15 @@ function createAssignmentRecord() {
   };
 }
 
-function createStudentAssignmentRecord() {
+function createStudentAssignmentRecord({
+  practiceAttempts = [],
+}: {
+  practiceAttempts?: Array<{
+    studentId: string;
+    wordId: string;
+    status: 'CORRECT' | 'WRONG';
+  }>;
+} = {}) {
   return {
     id: 'assignment-1',
     classId: 'class-1',
@@ -269,10 +371,35 @@ function createStudentAssignmentRecord() {
       title: 'Travel',
       words: [{ id: 'word-1' }, { id: 'word-2' }],
     },
+    practiceAttempts,
   };
 }
 
-function createStudentWordSetRecord() {
+function createStudentWordSetRecord({
+  practiceAttempts = [],
+  words = [
+    {
+      id: 'word-1',
+      term: 'depart',
+      translation: 'leave',
+      exampleSentence: 'We depart at noon.',
+      transcription: null,
+    },
+  ],
+}: {
+  practiceAttempts?: Array<{
+    studentId: string;
+    wordId: string;
+    status: 'CORRECT' | 'WRONG';
+  }>;
+  words?: Array<{
+    id: string;
+    term: string;
+    translation: string;
+    exampleSentence: string;
+    transcription: string | null;
+  }>;
+} = {}) {
   return {
     id: 'assignment-1',
     classId: 'class-1',
@@ -288,15 +415,8 @@ function createStudentWordSetRecord() {
       title: 'Travel',
       description: 'Airport vocabulary',
       createdAt: new Date('2026-05-26T10:00:00.000Z'),
-      words: [
-        {
-          id: 'word-1',
-          term: 'depart',
-          translation: 'leave',
-          exampleSentence: 'We depart at noon.',
-          transcription: null,
-        },
-      ],
+      words,
     },
+    practiceAttempts,
   };
 }

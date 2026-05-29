@@ -99,7 +99,14 @@ interface StudentClassRecord extends Class {
       title: string;
       words: unknown[];
     };
+    practiceAttempts: PracticeAttemptRecord[];
   }>;
+}
+
+interface PracticeAttemptRecord {
+  studentId: string;
+  wordId: string;
+  status: 'CORRECT' | 'WRONG';
 }
 
 export interface StudentAssignedWordSetDto {
@@ -279,7 +286,7 @@ export class ClassesService {
           },
         },
       },
-      include: studentClassInclude,
+      include: createStudentClassInclude(studentId),
       orderBy: { createdAt: 'desc' },
     });
 
@@ -292,7 +299,7 @@ export class ClassesService {
   ): Promise<StudentClassDto> {
     const classItem = await this.prisma.class.findUnique({
       where: { inviteCode: normalizeInviteCode(input.inviteCode) },
-      include: studentClassInclude,
+      include: createStudentClassInclude(studentId),
     });
 
     if (!classItem) {
@@ -413,25 +420,37 @@ const classDetailsInclude = {
   },
 };
 
-const studentClassInclude = {
-  teacher: {
-    select: {
-      name: true,
-    },
-  },
-  assignments: {
-    include: {
-      wordSet: {
-        include: {
-          words: true,
-        },
+function createStudentClassInclude(studentId: string) {
+  return {
+    teacher: {
+      select: {
+        name: true,
       },
     },
-    orderBy: {
-      assignedAt: 'desc' as const,
+    assignments: {
+      include: {
+        wordSet: {
+          include: {
+            words: true,
+          },
+        },
+        practiceAttempts: {
+          where: {
+            studentId,
+          },
+          select: {
+            studentId: true,
+            wordId: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        assignedAt: 'desc' as const,
+      },
     },
-  },
-};
+  };
+}
 
 function mapClassSummary(classItem: ClassSummaryRecord): ClassSummaryDto {
   return {
@@ -478,23 +497,52 @@ function mapStudent(student: { id: string; name: string; email: string }) {
 }
 
 function mapStudentClass(classItem: StudentClassRecord): StudentClassDto {
+  const wordSets = classItem.assignments.map((assignment) => {
+    const completedWords = countPracticedWords(assignment.practiceAttempts);
+    const totalWords = assignment.wordSet.words.length;
+
+    return {
+      id: assignment.id,
+      classId: classItem.id,
+      className: classItem.name,
+      title: assignment.wordSet.title,
+      words: totalWords,
+      completedWords,
+      progress: calculatePercentage(completedWords, totalWords),
+      dueLabel: 'No due date',
+    };
+  });
+
   return {
     id: classItem.id,
     name: classItem.name,
     teacherName: classItem.teacher.name,
     level: classItem.level,
-    progress: 0,
-    wordSets: classItem.assignments.map((assignment) => ({
-      id: assignment.id,
-      classId: classItem.id,
-      className: classItem.name,
-      title: assignment.wordSet.title,
-      words: assignment.wordSet.words.length,
-      completedWords: 0,
-      progress: 0,
-      dueLabel: 'No due date',
-    })),
+    progress: calculateAverage(wordSets.map((wordSet) => wordSet.progress)),
+    wordSets,
   };
+}
+
+function countPracticedWords(attempts: PracticeAttemptRecord[]) {
+  return new Set(attempts.map((attempt) => attempt.wordId)).size;
+}
+
+function calculatePercentage(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function calculateAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    values.reduce((total, value) => total + value, 0) / values.length,
+  );
 }
 
 function normalizeEmail(email: string) {

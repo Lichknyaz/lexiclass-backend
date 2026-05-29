@@ -279,6 +279,46 @@ describe('ClassesService', () => {
     ]);
   });
 
+  it('maps joined class and nested word-set progress from saved practice attempts', async () => {
+    prisma.class.findMany.mockResolvedValue([
+      createStudentClassRecord({
+        id: 'class-1',
+        name: 'English A2',
+        teacherName: 'Teacher',
+        assignments: [
+          {
+            id: 'assignment-1',
+            wordSet: {
+              title: 'Travel',
+              words: [{ id: 'word-1' }, { id: 'word-2' }],
+            },
+            practiceAttempts: [
+              {
+                studentId: 'student-1',
+                wordId: 'word-1',
+                status: 'CORRECT',
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    const result = await service.listStudentClasses('student-1');
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        progress: 50,
+        wordSets: [
+          expect.objectContaining({
+            completedWords: 1,
+            progress: 50,
+          }),
+        ],
+      }),
+    );
+  });
+
   it('joins a class by invite code', async () => {
     prisma.class.findUnique.mockResolvedValue(
       createStudentClassRecord({
@@ -394,6 +434,18 @@ function createStudentClassRecord(input: {
   id: string;
   name: string;
   teacherName: string;
+  assignments?: Array<{
+    id: string;
+    wordSet: {
+      title: string;
+      words: Array<{ id: string }>;
+    };
+    practiceAttempts?: Array<{
+      studentId: string;
+      wordId: string;
+      status: 'CORRECT' | 'WRONG';
+    }>;
+  }>;
 }) {
   return {
     id: input.id,
@@ -405,13 +457,14 @@ function createStudentClassRecord(input: {
     teacher: {
       name: input.teacherName,
     },
-    assignments: [
+    assignments: input.assignments ?? [
       {
         id: 'assignment-1',
         wordSet: {
           title: 'Travel',
           words: [{ id: 'word-1' }, { id: 'word-2' }],
         },
+        practiceAttempts: [],
       },
     ],
   };
