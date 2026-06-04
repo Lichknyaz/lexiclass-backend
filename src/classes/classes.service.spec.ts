@@ -514,6 +514,326 @@ describe('ClassesService', () => {
 
     expect(result.name).toBe('English A2');
   });
+
+  it('returns weak review words for an owned class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.practiceAttempt.findMany.mockResolvedValue([
+      createReviewAttempt({
+        wordId: 'word-1',
+        studentId: 'student-1',
+        status: 'WRONG',
+      }),
+      createReviewAttempt({
+        wordId: 'word-1',
+        studentId: 'student-2',
+        status: 'CORRECT',
+      }),
+      createReviewAttempt({
+        wordId: 'word-1',
+        studentId: 'student-2',
+        status: 'WRONG',
+      }),
+    ]);
+
+    const result = await service.listClassReviewWords('teacher-1', 'class-1', {
+      source: 'weak',
+      problemWordWindow: '14',
+    });
+
+    expect(prisma.practiceAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        assignment: {
+          classId: 'class-1',
+          class: {
+            teacherId: 'teacher-1',
+          },
+        },
+        answeredAt: expect.objectContaining({
+          gte: expect.any(Date),
+        }),
+      },
+      include: expect.any(Object),
+    });
+    expect(result).toEqual([
+      {
+        wordId: 'word-1',
+        term: 'arrive',
+        translation: 'прибувати',
+        transcription: 'uh-RYV',
+        exampleSentence: 'We arrive at the airport.',
+        sourceWordSetId: 'word-set-1',
+        sourceWordSetTitle: 'Travel Basics',
+        wrongAnswers: 2,
+        correctAnswers: 1,
+        affectedStudents: 2,
+        wrongRate: 67,
+      },
+    ]);
+  });
+
+  it('returns all assigned words for an owned class', async () => {
+    prisma.class.findUnique.mockResolvedValue(
+      createClassDetailsRecord({
+        assignments: [
+          {
+            id: 'assignment-1',
+            wordSet: {
+              id: 'word-set-1',
+              title: 'Travel Basics',
+              description: 'Travel words',
+              words: [
+                {
+                  id: 'word-2',
+                  term: 'depart',
+                  translation: 'відправлятися',
+                  transcription: 'di-PAHRT',
+                  exampleSentence: 'The train departs at noon.',
+                },
+                {
+                  id: 'word-1',
+                  term: 'arrive',
+                  translation: 'прибувати',
+                  transcription: 'uh-RYV',
+                  exampleSentence: 'We arrive at the airport.',
+                },
+              ],
+            },
+            class: {
+              enrollments: [],
+            },
+            practiceAttempts: [],
+          },
+        ],
+      }),
+    );
+
+    const result = await service.listClassReviewWords('teacher-1', 'class-1', {
+      source: 'all',
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        wordId: 'word-1',
+        term: 'arrive',
+        sourceWordSetTitle: 'Travel Basics',
+        wrongAnswers: 0,
+        correctAnswers: 0,
+        affectedStudents: 0,
+        wrongRate: 0,
+      }),
+      expect.objectContaining({
+        wordId: 'word-2',
+        term: 'depart',
+        sourceWordSetTitle: 'Travel Basics',
+      }),
+    ]);
+  });
+
+  it('rejects review words for another teacher class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-2',
+    });
+
+    await expect(
+      service.listClassReviewWords('teacher-1', 'class-1', {
+        source: 'all',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('creates and assigns a review word set from selected class words', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        term: 'arrive',
+        translation: 'прибувати',
+        transcription: 'uh-RYV',
+        exampleSentence: 'We arrive at the airport.',
+      },
+      {
+        id: 'word-2',
+        term: 'delay',
+        translation: 'затримка',
+        transcription: 'di-LAY',
+        exampleSentence: 'The flight has a delay.',
+      },
+    ]);
+    prisma.wordSet.create.mockResolvedValue({
+      id: 'review-set-1',
+      title: 'Review: English A2 - Travel',
+      description: 'Review set',
+      _count: {
+        words: 2,
+        assignments: 0,
+      },
+    });
+    prisma.assignment.upsert.mockResolvedValue({
+      id: 'assignment-1',
+      classId: 'class-1',
+      wordSetId: 'review-set-1',
+      assignedAt: new Date('2026-06-04T12:00:00.000Z'),
+    });
+
+    const result = await service.createClassReviewWordSet(
+      'teacher-1',
+      'class-1',
+      {
+        title: 'Review: English A2 - Travel',
+        description: 'Review set',
+        tag: 'A2',
+        wordIds: ['word-1', 'word-2'],
+        assignToClass: true,
+      },
+    );
+
+    expect(prisma.word.findMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['word-1', 'word-2'],
+        },
+        wordSet: {
+          assignments: {
+            some: {
+              classId: 'class-1',
+              class: {
+                teacherId: 'teacher-1',
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        term: 'asc',
+      },
+    });
+    expect(prisma.wordSet.create).toHaveBeenCalledWith({
+      data: {
+        title: 'Review: English A2 - Travel',
+        description: 'Review set',
+        tag: 'A2',
+        teacherId: 'teacher-1',
+        words: {
+          create: [
+            {
+              term: 'arrive',
+              translation: 'прибувати',
+              transcription: 'uh-RYV',
+              exampleSentence: 'We arrive at the airport.',
+            },
+            {
+              term: 'delay',
+              translation: 'затримка',
+              transcription: 'di-LAY',
+              exampleSentence: 'The flight has a delay.',
+            },
+          ],
+        },
+      },
+      include: expect.any(Object),
+    });
+    expect(prisma.assignment.upsert).toHaveBeenCalledWith({
+      where: {
+        classId_wordSetId: {
+          classId: 'class-1',
+          wordSetId: 'review-set-1',
+        },
+      },
+      create: {
+        classId: 'class-1',
+        wordSetId: 'review-set-1',
+      },
+      update: {},
+    });
+    expect(result).toEqual({
+      wordSet: {
+        id: 'review-set-1',
+        title: 'Review: English A2 - Travel',
+        description: 'Review set',
+        words: 2,
+        assignedClasses: 0,
+      },
+      assignment: {
+        id: 'assignment-1',
+        classId: 'class-1',
+        wordSetId: 'review-set-1',
+        assignedAt: '2026-06-04T12:00:00.000Z',
+      },
+    });
+  });
+
+  it('creates a review word set without assignment when disabled', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        term: 'arrive',
+        translation: 'прибувати',
+        transcription: null,
+        exampleSentence: 'We arrive at the airport.',
+      },
+    ]);
+    prisma.wordSet.create.mockResolvedValue({
+      id: 'review-set-1',
+      title: 'Review',
+      description: '',
+      _count: {
+        words: 1,
+        assignments: 0,
+      },
+    });
+
+    const result = await service.createClassReviewWordSet(
+      'teacher-1',
+      'class-1',
+      {
+        title: 'Review',
+        description: '',
+        tag: '',
+        wordIds: ['word-1'],
+        assignToClass: false,
+      },
+    );
+
+    expect(prisma.assignment.upsert).not.toHaveBeenCalled();
+    expect(result.assignment).toBeNull();
+  });
+
+  it('rejects review word set creation when selected words are outside the class', async () => {
+    prisma.class.findUnique.mockResolvedValue({
+      id: 'class-1',
+      teacherId: 'teacher-1',
+    });
+    prisma.word.findMany.mockResolvedValue([
+      {
+        id: 'word-1',
+        term: 'arrive',
+        translation: 'прибувати',
+        transcription: null,
+        exampleSentence: 'We arrive at the airport.',
+      },
+    ]);
+
+    await expect(
+      service.createClassReviewWordSet('teacher-1', 'class-1', {
+        title: 'Review',
+        description: '',
+        tag: '',
+        wordIds: ['word-1', 'outside-word'],
+        assignToClass: true,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });
 
 interface MockPrisma {
@@ -533,6 +853,18 @@ interface MockPrisma {
     findUnique: jest.Mock;
     upsert: jest.Mock;
     delete: jest.Mock;
+  };
+  word: {
+    findMany: jest.Mock;
+  };
+  wordSet: {
+    create: jest.Mock;
+  };
+  assignment: {
+    upsert: jest.Mock;
+  };
+  practiceAttempt: {
+    findMany: jest.Mock;
   };
 }
 
@@ -554,6 +886,18 @@ function createMockPrisma(): MockPrisma {
       findUnique: jest.fn(),
       upsert: jest.fn(),
       delete: jest.fn(),
+    },
+    word: {
+      findMany: jest.fn(),
+    },
+    wordSet: {
+      create: jest.fn(),
+    },
+    assignment: {
+      upsert: jest.fn(),
+    },
+    practiceAttempt: {
+      findMany: jest.fn(),
     },
   };
 }
@@ -582,6 +926,8 @@ interface ClassDetailsTestRecord {
         id: string;
         term?: string;
         translation?: string;
+        transcription?: string | null;
+        exampleSentence?: string;
       }>;
     };
     class: {
@@ -597,6 +943,30 @@ interface ClassDetailsTestRecord {
   _count: {
     enrollments: number;
     assignments: number;
+  };
+}
+
+function createReviewAttempt(input: {
+  wordId: string;
+  studentId: string;
+  status: 'CORRECT' | 'WRONG';
+}) {
+  return {
+    wordId: input.wordId,
+    studentId: input.studentId,
+    status: input.status,
+    answeredAt: new Date('2026-06-04T10:00:00.000Z'),
+    word: {
+      id: input.wordId,
+      term: 'arrive',
+      translation: 'прибувати',
+      transcription: 'uh-RYV',
+      exampleSentence: 'We arrive at the airport.',
+      wordSet: {
+        id: 'word-set-1',
+        title: 'Travel Basics',
+      },
+    },
   };
 }
 

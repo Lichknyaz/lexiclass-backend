@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -30,7 +31,9 @@ import {
 } from '../swagger/api-response.dto';
 import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { CreateReviewWordSetDto } from './dto/create-review-word-set.dto';
 import { JoinClassDto } from './dto/join-class.dto';
+import { ReviewWordsQueryDto } from './dto/review-words-query.dto';
 import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
@@ -54,6 +57,28 @@ export class ClassesController {
   @ApiCreatedResponse({ type: ClassSummaryResponseDto })
   createClass(@CurrentUser() user: AuthUserDto, @Body() input: CreateClassDto) {
     return this.classesService.createClass(user.id, input);
+  }
+
+  @Get(':classId/review-words')
+  @ApiOperation({ summary: 'List class words available for review set creation' })
+  @ApiOkResponse({ type: [Object] })
+  listClassReviewWords(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Query() query: ReviewWordsQueryDto,
+  ) {
+    return this.classesService.listClassReviewWords(user.id, classId, query);
+  }
+
+  @Post(':classId/review-word-sets')
+  @ApiOperation({ summary: 'Create a review word set from class words' })
+  @ApiCreatedResponse({ type: Object })
+  createClassReviewWordSet(
+    @CurrentUser() user: AuthUserDto,
+    @Param('classId') classId: string,
+    @Body() input: CreateReviewWordSetDto,
+  ) {
+    return this.classesService.createClassReviewWordSet(user.id, classId, input);
   }
 
   @Get(':classId')

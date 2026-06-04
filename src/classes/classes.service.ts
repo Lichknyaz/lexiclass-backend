@@ -1,13 +1,17 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Class, UserRole } from '@prisma/client';
+import { AnswerStatus, Class, UserRole } from '@prisma/client';
+import { AnalyticsProblemWordWindow } from '../analytics/dto/analytics-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassDto } from './dto/create-class.dto';
+import { CreateReviewWordSetDto } from './dto/create-review-word-set.dto';
 import { JoinClassDto } from './dto/join-class.dto';
+import { ReviewWordsQueryDto } from './dto/review-words-query.dto';
 import { StudentDto } from './dto/student.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 
@@ -44,6 +48,8 @@ interface ClassDetailsRecord extends Class {
         id: string;
         term?: string;
         translation?: string;
+        transcription?: string | null;
+        exampleSentence?: string;
       }>;
     };
     class: {
@@ -121,6 +127,48 @@ interface TeacherPracticeAttemptRecord extends PracticeAttemptRecord {
   answeredAt: Date;
 }
 
+interface ReviewAttemptRecord {
+  wordId: string;
+  studentId: string;
+  status: AnswerStatus;
+  word: {
+    id: string;
+    term: string;
+    translation: string;
+    transcription: string | null;
+    exampleSentence: string;
+    wordSet: {
+      id: string;
+      title: string;
+    };
+  };
+}
+
+interface SourceWordRecord {
+  id: string;
+  term: string;
+  translation: string;
+  transcription: string | null;
+  exampleSentence: string;
+}
+
+interface CreatedWordSetRecord {
+  id: string;
+  title: string;
+  description: string;
+  _count: {
+    words: number;
+    assignments: number;
+  };
+}
+
+interface AssignmentRecord {
+  id: string;
+  classId: string;
+  wordSetId: string;
+  assignedAt: Date;
+}
+
 interface ProgressAssignmentRecord {
   wordSet: {
     words: Array<{
@@ -148,6 +196,36 @@ export interface StudentClassDto {
   level: string;
   progress: number;
   wordSets: StudentAssignedWordSetDto[];
+}
+
+export interface ReviewWordDto {
+  wordId: string;
+  term: string;
+  translation: string;
+  transcription: string | null;
+  exampleSentence: string;
+  sourceWordSetId: string;
+  sourceWordSetTitle: string;
+  wrongAnswers: number;
+  correctAnswers: number;
+  affectedStudents: number;
+  wrongRate: number;
+}
+
+export interface CreateReviewWordSetResponseDto {
+  wordSet: {
+    id: string;
+    title: string;
+    description: string;
+    words: number;
+    assignedClasses: number;
+  };
+  assignment: {
+    id: string;
+    classId: string;
+    wordSetId: string;
+    assignedAt: string;
+  } | null;
 }
 
 @Injectable()
@@ -187,6 +265,120 @@ export class ClassesService {
     const classDetails = await this.getOwnedClassDetails(teacherId, classId);
 
     return mapClassDetails(classDetails);
+  }
+
+  async listClassReviewWords(
+    teacherId: string,
+    classId: string,
+    query: ReviewWordsQueryDto,
+  ): Promise<ReviewWordDto[]> {
+    if (query.source === 'all') {
+      const classDetails = await this.getOwnedClassDetails(teacherId, classId);
+
+      return mapAllReviewWords(classDetails);
+    }
+
+    await this.assertTeacherOwnsClass(teacherId, classId);
+
+    const problemWordWindow = query.problemWordWindow ?? '14';
+    const windowStart = getProblemWordWindowStart(problemWordWindow);
+    const attempts = await this.prisma.practiceAttempt.findMany({
+      where: {
+        assignment: {
+          classId,
+          class: {
+            teacherId,
+          },
+        },
+        ...(windowStart ? { answeredAt: { gte: windowStart } } : {}),
+      },
+      include: {
+        word: {
+          include: {
+            wordSet: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return mapWeakReviewWords(attempts, problemWordWindow);
+  }
+
+  async createClassReviewWordSet(
+    teacherId: string,
+    classId: string,
+    input: CreateReviewWordSetDto,
+  ): Promise<CreateReviewWordSetResponseDto> {
+    await this.assertTeacherOwnsClass(teacherId, classId);
+
+    if (input.wordIds.length === 0) {
+      throw new BadRequestException('At least one word must be selected');
+    }
+
+    const sourceWords = await this.prisma.word.findMany({
+      where: {
+        id: {
+          in: input.wordIds,
+        },
+        wordSet: {
+          assignments: {
+            some: {
+              classId,
+              class: {
+                teacherId,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        term: 'asc',
+      },
+    });
+    const sourceWordIds = new Set(sourceWords.map((word) => word.id));
+    const missingWordId = input.wordIds.find((wordId) => !sourceWordIds.has(wordId));
+
+    if (missingWordId) {
+      throw new NotFoundException('Selected word not found in this class');
+    }
+
+    const createdWordSet = await this.prisma.wordSet.create({
+      data: {
+        title: input.title.trim(),
+        description: (input.description ?? '').trim(),
+        tag: (input.tag ?? '').trim(),
+        teacherId,
+        words: {
+          create: uniqueWordsByTerm(sourceWords).map(mapSourceWordForCreate),
+        },
+      },
+      include: wordSetSummaryInclude,
+    });
+    const assignment = input.assignToClass
+      ? await this.prisma.assignment.upsert({
+          where: {
+            classId_wordSetId: {
+              classId,
+              wordSetId: createdWordSet.id,
+            },
+          },
+          create: {
+            classId,
+            wordSetId: createdWordSet.id,
+          },
+          update: {},
+        })
+      : null;
+
+    return {
+      wordSet: mapReviewWordSetSummary(createdWordSet),
+      assignment: assignment ? mapAssignment(assignment) : null,
+    };
   }
 
   async updateClass(
@@ -470,6 +662,15 @@ const classDetailsInclude = {
   },
 };
 
+const wordSetSummaryInclude = {
+  _count: {
+    select: {
+      words: true,
+      assignments: true,
+    },
+  },
+};
+
 function createStudentClassInclude(studentId: string) {
   return {
     teacher: {
@@ -720,6 +921,188 @@ function mapProblemWords(assignments: ClassDetailsRecord['assignments']) {
       correctAnswers: word.correctAnswers,
       affectedStudents: word.affectedStudents.size,
     }));
+}
+
+function mapAllReviewWords(classItem: ClassDetailsRecord): ReviewWordDto[] {
+  return classItem.assignments
+    .flatMap((assignment) =>
+      assignment.wordSet.words.map((word) => ({
+        wordId: word.id,
+        term: word.term ?? '',
+        translation: word.translation ?? '',
+        transcription: word.transcription ?? null,
+        exampleSentence: word.exampleSentence ?? '',
+        sourceWordSetId: assignment.wordSet.id,
+        sourceWordSetTitle: assignment.wordSet.title,
+        wrongAnswers: 0,
+        correctAnswers: 0,
+        affectedStudents: 0,
+        wrongRate: 0,
+      })),
+    )
+    .sort(compareAllReviewWords);
+}
+
+function mapWeakReviewWords(
+  attempts: ReviewAttemptRecord[],
+  problemWordWindow: AnalyticsProblemWordWindow,
+): ReviewWordDto[] {
+  const words = new Map<
+    string,
+    {
+      wordId: string;
+      term: string;
+      translation: string;
+      transcription: string | null;
+      exampleSentence: string;
+      sourceWordSetId: string;
+      sourceWordSetTitle: string;
+      wrongAnswers: number;
+      correctAnswers: number;
+      affectedStudentIds: Set<string>;
+    }
+  >();
+
+  for (const attempt of attempts) {
+    const item = words.get(attempt.wordId) ?? {
+      wordId: attempt.word.id,
+      term: attempt.word.term,
+      translation: attempt.word.translation,
+      transcription: attempt.word.transcription,
+      exampleSentence: attempt.word.exampleSentence,
+      sourceWordSetId: attempt.word.wordSet.id,
+      sourceWordSetTitle: attempt.word.wordSet.title,
+      wrongAnswers: 0,
+      correctAnswers: 0,
+      affectedStudentIds: new Set<string>(),
+    };
+
+    if (attempt.status === AnswerStatus.WRONG) {
+      item.wrongAnswers += 1;
+      item.affectedStudentIds.add(attempt.studentId);
+    } else {
+      item.correctAnswers += 1;
+    }
+
+    words.set(attempt.wordId, item);
+  }
+
+  return Array.from(words.values())
+    .filter((word) =>
+      isActionableProblemWord(
+        {
+          wrongAnswers: word.wrongAnswers,
+          correctAnswers: word.correctAnswers,
+        },
+        problemWordWindow,
+      ),
+    )
+    .map((word) => ({
+      wordId: word.wordId,
+      term: word.term,
+      translation: word.translation,
+      transcription: word.transcription,
+      exampleSentence: word.exampleSentence,
+      sourceWordSetId: word.sourceWordSetId,
+      sourceWordSetTitle: word.sourceWordSetTitle,
+      wrongAnswers: word.wrongAnswers,
+      correctAnswers: word.correctAnswers,
+      affectedStudents: word.affectedStudentIds.size,
+      wrongRate: calculatePercentage(
+        word.wrongAnswers,
+        word.wrongAnswers + word.correctAnswers,
+      ),
+    }))
+    .sort(compareWeakReviewWords);
+}
+
+function uniqueWordsByTerm(words: SourceWordRecord[]) {
+  const uniqueWords = new Map<string, SourceWordRecord>();
+
+  for (const word of words) {
+    const normalizedTerm = word.term.trim().toLowerCase();
+
+    if (!uniqueWords.has(normalizedTerm)) {
+      uniqueWords.set(normalizedTerm, word);
+    }
+  }
+
+  return Array.from(uniqueWords.values());
+}
+
+function mapSourceWordForCreate(word: SourceWordRecord) {
+  return {
+    term: word.term,
+    translation: word.translation,
+    transcription: word.transcription,
+    exampleSentence: word.exampleSentence,
+  };
+}
+
+function mapReviewWordSetSummary(wordSet: CreatedWordSetRecord) {
+  return {
+    id: wordSet.id,
+    title: wordSet.title,
+    description: wordSet.description,
+    words: wordSet._count.words,
+    assignedClasses: wordSet._count.assignments,
+  };
+}
+
+function mapAssignment(assignment: AssignmentRecord) {
+  return {
+    id: assignment.id,
+    classId: assignment.classId,
+    wordSetId: assignment.wordSetId,
+    assignedAt: assignment.assignedAt.toISOString(),
+  };
+}
+
+function compareWeakReviewWords(first: ReviewWordDto, second: ReviewWordDto) {
+  return (
+    second.wrongRate - first.wrongRate ||
+    second.affectedStudents - first.affectedStudents ||
+    second.wrongAnswers - first.wrongAnswers ||
+    first.term.localeCompare(second.term)
+  );
+}
+
+function compareAllReviewWords(first: ReviewWordDto, second: ReviewWordDto) {
+  return (
+    first.sourceWordSetTitle.localeCompare(second.sourceWordSetTitle) ||
+    first.term.localeCompare(second.term)
+  );
+}
+
+function isActionableProblemWord(
+  word: {
+    wrongAnswers: number;
+    correctAnswers: number;
+  },
+  problemWordWindow: AnalyticsProblemWordWindow,
+) {
+  if (word.wrongAnswers === 0) {
+    return false;
+  }
+
+  if (problemWordWindow === 'all') {
+    return true;
+  }
+
+  const totalAnswers = word.wrongAnswers + word.correctAnswers;
+
+  return totalAnswers > 0 && word.wrongAnswers / totalAnswers >= 0.4;
+}
+
+function getProblemWordWindowStart(window: AnalyticsProblemWordWindow) {
+  if (window === 'all') {
+    return null;
+  }
+
+  const start = new Date();
+  start.setDate(start.getDate() - Number(window));
+
+  return start;
 }
 
 function calculatePercentage(value: number, total: number) {
