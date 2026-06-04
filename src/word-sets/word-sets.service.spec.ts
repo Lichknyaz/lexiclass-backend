@@ -77,7 +77,7 @@ describe('WordSetsService', () => {
     expect(result).toEqual({
       id: 'word-set-1',
       classId: '',
-      className: '',
+      className: 'A2',
       title: 'Travel',
       description: 'Airport vocabulary',
       words: 1,

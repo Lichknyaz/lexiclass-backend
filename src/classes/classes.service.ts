@@ -14,6 +14,12 @@ import { UpdateClassDto } from './dto/update-class.dto';
 interface ClassSummaryRecord {
   id: string;
   name: string;
+  enrollments: Array<{
+    student: {
+      id: string;
+    };
+  }>;
+  assignments: ProgressAssignmentRecord[];
   _count: {
     enrollments: number;
     assignments: number;
@@ -34,14 +40,16 @@ interface ClassDetailsRecord extends Class {
       id: string;
       title: string;
       description: string;
-      words: unknown[];
+      words: Array<{
+        id: string;
+        term?: string;
+        translation?: string;
+      }>;
     };
     class: {
       enrollments: unknown[];
     };
-    practiceAttempts: Array<{
-      status: 'CORRECT' | 'WRONG';
-    }>;
+    practiceAttempts: TeacherPracticeAttemptRecord[];
   }>;
   _count: {
     enrollments: number;
@@ -99,7 +107,27 @@ interface StudentClassRecord extends Class {
       title: string;
       words: unknown[];
     };
+    practiceAttempts: PracticeAttemptRecord[];
   }>;
+}
+
+interface PracticeAttemptRecord {
+  studentId: string;
+  wordId: string;
+  status: 'CORRECT' | 'WRONG';
+}
+
+interface TeacherPracticeAttemptRecord extends PracticeAttemptRecord {
+  answeredAt: Date;
+}
+
+interface ProgressAssignmentRecord {
+  wordSet: {
+    words: Array<{
+      id: string;
+    }>;
+  };
+  practiceAttempts: PracticeAttemptRecord[];
 }
 
 export interface StudentAssignedWordSetDto {
@@ -279,7 +307,7 @@ export class ClassesService {
           },
         },
       },
-      include: studentClassInclude,
+      include: createStudentClassInclude(studentId),
       orderBy: { createdAt: 'desc' },
     });
 
@@ -292,7 +320,7 @@ export class ClassesService {
   ): Promise<StudentClassDto> {
     const classItem = await this.prisma.class.findUnique({
       where: { inviteCode: normalizeInviteCode(input.inviteCode) },
-      include: studentClassInclude,
+      include: createStudentClassInclude(studentId),
     });
 
     if (!classItem) {
@@ -370,6 +398,35 @@ export class ClassesService {
 }
 
 const classSummaryInclude = {
+  enrollments: {
+    select: {
+      student: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  },
+  assignments: {
+    include: {
+      wordSet: {
+        select: {
+          words: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+      practiceAttempts: {
+        select: {
+          studentId: true,
+          wordId: true,
+          status: true,
+        },
+      },
+    },
+  },
   _count: {
     select: {
       enrollments: true,
@@ -413,25 +470,37 @@ const classDetailsInclude = {
   },
 };
 
-const studentClassInclude = {
-  teacher: {
-    select: {
-      name: true,
-    },
-  },
-  assignments: {
-    include: {
-      wordSet: {
-        include: {
-          words: true,
-        },
+function createStudentClassInclude(studentId: string) {
+  return {
+    teacher: {
+      select: {
+        name: true,
       },
     },
-    orderBy: {
-      assignedAt: 'desc' as const,
+    assignments: {
+      include: {
+        wordSet: {
+          include: {
+            words: true,
+          },
+        },
+        practiceAttempts: {
+          where: {
+            studentId,
+          },
+          select: {
+            studentId: true,
+            wordId: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        assignedAt: 'desc' as const,
+      },
     },
-  },
-};
+  };
+}
 
 function mapClassSummary(classItem: ClassSummaryRecord): ClassSummaryDto {
   return {
@@ -439,29 +508,34 @@ function mapClassSummary(classItem: ClassSummaryRecord): ClassSummaryDto {
     name: classItem.name,
     students: classItem._count.enrollments,
     wordSets: classItem._count.assignments,
-    progress: 0,
+    progress: calculateClassProgress(classItem),
   };
 }
 
 function mapClassDetails(classItem: ClassDetailsRecord): ClassDetailsDto {
+  const studentsList = classItem.enrollments.map((enrollment) =>
+    mapClassDetailsStudent(enrollment.student, classItem.assignments),
+  );
+  const wordSetsList = classItem.assignments.map((assignment) => ({
+    id: assignment.id,
+    classId: classItem.id,
+    title: assignment.wordSet.title,
+    description: assignment.wordSet.description,
+    words: assignment.wordSet.words.length,
+    assignedStudents: assignment.class.enrollments.length,
+    averageProgress: calculateAssignmentAverageProgress(assignment),
+  }));
+  const summary = mapClassSummary(classItem);
+
   return {
-    ...mapClassSummary(classItem),
+    ...summary,
+    progress: calculateAverage(studentsList.map((student) => student.progress)),
     inviteCode: classItem.inviteCode,
     level: classItem.level,
     description: classItem.description,
-    studentsList: classItem.enrollments.map((enrollment) =>
-      mapStudent(enrollment.student),
-    ),
-    wordSetsList: classItem.assignments.map((assignment) => ({
-      id: assignment.id,
-      classId: classItem.id,
-      title: assignment.wordSet.title,
-      description: assignment.wordSet.description,
-      words: assignment.wordSet.words.length,
-      assignedStudents: assignment.class.enrollments.length,
-      averageProgress: 0,
-    })),
-    problemWords: [],
+    studentsList,
+    wordSetsList,
+    problemWords: mapProblemWords(classItem.assignments),
   };
 }
 
@@ -478,23 +552,192 @@ function mapStudent(student: { id: string; name: string; email: string }) {
 }
 
 function mapStudentClass(classItem: StudentClassRecord): StudentClassDto {
+  const wordSets = classItem.assignments.map((assignment) => {
+    const completedWords = countPracticedWords(assignment.practiceAttempts);
+    const totalWords = assignment.wordSet.words.length;
+
+    return {
+      id: assignment.id,
+      classId: classItem.id,
+      className: classItem.name,
+      title: assignment.wordSet.title,
+      words: totalWords,
+      completedWords,
+      progress: calculatePercentage(completedWords, totalWords),
+      dueLabel: 'No due date',
+    };
+  });
+
   return {
     id: classItem.id,
     name: classItem.name,
     teacherName: classItem.teacher.name,
     level: classItem.level,
-    progress: 0,
-    wordSets: classItem.assignments.map((assignment) => ({
-      id: assignment.id,
-      classId: classItem.id,
-      className: classItem.name,
-      title: assignment.wordSet.title,
-      words: assignment.wordSet.words.length,
-      completedWords: 0,
-      progress: 0,
-      dueLabel: 'No due date',
-    })),
+    progress: calculateAverage(wordSets.map((wordSet) => wordSet.progress)),
+    wordSets,
   };
+}
+
+function mapClassDetailsStudent(
+  student: { id: string; name: string; email: string },
+  assignments: ClassDetailsRecord['assignments'],
+) {
+  const attempts = getAttemptsForStudent(assignments, student.id);
+  const correctAnswers = attempts.filter(
+    (attempt) => attempt.status === 'CORRECT',
+  ).length;
+  const wrongAnswers = attempts.length - correctAnswers;
+  const lastPracticedAt = attempts.reduce<Date | null>(
+    (latest, attempt) =>
+      !latest || attempt.answeredAt > latest ? attempt.answeredAt : latest,
+    null,
+  );
+
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    progress: calculateStudentProgress(assignments, student.id),
+    correctAnswers,
+    wrongAnswers,
+    lastPracticedAt: lastPracticedAt?.toISOString() ?? null,
+  };
+}
+
+function countPracticedWords(attempts: PracticeAttemptRecord[]) {
+  return new Set(attempts.map((attempt) => attempt.wordId)).size;
+}
+
+function calculateStudentProgress(
+  assignments: ProgressAssignmentRecord[],
+  studentId: string,
+) {
+  const totalWords = assignments.reduce(
+    (total, assignment) => total + assignment.wordSet.words.length,
+    0,
+  );
+  const completedWords = assignments.reduce(
+    (total, assignment) =>
+      total +
+      countPracticedWords(
+        assignment.practiceAttempts.filter(
+          (attempt) => attempt.studentId === studentId,
+        ),
+      ),
+    0,
+  );
+
+  return calculatePercentage(completedWords, totalWords);
+}
+
+function calculateAssignmentAverageProgress(
+  assignment: ClassDetailsRecord['assignments'][number],
+) {
+  const assignedStudents = assignment.class.enrollments.length;
+  const totalWordSlots = assignment.wordSet.words.length * assignedStudents;
+
+  if (totalWordSlots === 0) {
+    return 0;
+  }
+
+  const completedWordSlots = new Set(
+    assignment.practiceAttempts.map(
+      (attempt) => `${attempt.studentId}:${attempt.wordId}`,
+    ),
+  ).size;
+
+  return calculatePercentage(completedWordSlots, totalWordSlots);
+}
+
+function getAttemptsForStudent<TAttempt extends PracticeAttemptRecord>(
+  assignments: Array<{ practiceAttempts: TAttempt[] }>,
+  studentId: string,
+) {
+  return assignments.flatMap((assignment) =>
+    assignment.practiceAttempts.filter((attempt) => attempt.studentId === studentId),
+  );
+}
+
+function calculateClassProgress(classItem: ClassSummaryRecord) {
+  return calculateAverage(
+    classItem.enrollments.map((enrollment) =>
+      calculateStudentProgress(classItem.assignments, enrollment.student.id),
+    ),
+  );
+}
+
+function mapProblemWords(assignments: ClassDetailsRecord['assignments']) {
+  const problemWords = new Map<
+    string,
+    {
+      id: string;
+      term: string;
+      translation: string;
+      wrongAnswers: number;
+      correctAnswers: number;
+      affectedStudents: Set<string>;
+    }
+  >();
+
+  for (const assignment of assignments) {
+    for (const attempt of assignment.practiceAttempts) {
+      const word = assignment.wordSet.words.find(
+        (candidate) => candidate.id === attempt.wordId,
+      );
+
+      if (!word) {
+        continue;
+      }
+
+      const existing = problemWords.get(word.id) ?? {
+        id: word.id,
+        term: word.term ?? '',
+        translation: word.translation ?? '',
+        wrongAnswers: 0,
+        correctAnswers: 0,
+        affectedStudents: new Set<string>(),
+      };
+
+      if (attempt.status === 'WRONG') {
+        existing.wrongAnswers += 1;
+        existing.affectedStudents.add(attempt.studentId);
+      } else {
+        existing.correctAnswers += 1;
+      }
+
+      problemWords.set(word.id, existing);
+    }
+  }
+
+  return Array.from(problemWords.values())
+    .filter((word) => word.wrongAnswers > 0)
+    .sort((first, second) => second.wrongAnswers - first.wrongAnswers)
+    .map((word) => ({
+      id: word.id,
+      term: word.term,
+      translation: word.translation,
+      wrongAnswers: word.wrongAnswers,
+      correctAnswers: word.correctAnswers,
+      affectedStudents: word.affectedStudents.size,
+    }));
+}
+
+function calculatePercentage(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function calculateAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    values.reduce((total, value) => total + value, 0) / values.length,
+  );
 }
 
 function normalizeEmail(email: string) {

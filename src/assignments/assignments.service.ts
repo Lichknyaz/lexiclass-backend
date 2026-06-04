@@ -23,6 +23,7 @@ interface StudentAssignmentRecord extends AssignmentRecord {
     title: string;
     words: unknown[];
   };
+  practiceAttempts: PracticeAttemptRecord[];
 }
 
 interface StudentWordSetAssignmentRecord extends AssignmentRecord {
@@ -44,6 +45,13 @@ interface StudentWordSetAssignmentRecord extends AssignmentRecord {
       transcription: string | null;
     }>;
   };
+  practiceAttempts: PracticeAttemptRecord[];
+}
+
+interface PracticeAttemptRecord {
+  studentId: string;
+  wordId: string;
+  status: 'CORRECT' | 'WRONG';
 }
 
 export interface AssignmentDto {
@@ -150,7 +158,7 @@ export class AssignmentsService {
           },
         },
       },
-      include: studentAssignmentInclude,
+      include: createStudentAssignmentInclude(studentId),
       orderBy: { assignedAt: 'desc' },
     });
 
@@ -172,7 +180,7 @@ export class AssignmentsService {
           },
         },
       },
-      include: studentWordSetInclude,
+      include: createStudentWordSetInclude(studentId),
     });
 
     if (!assignment) {
@@ -219,36 +227,60 @@ export class AssignmentsService {
   }
 }
 
-const studentAssignmentInclude = {
-  class: {
-    select: {
-      id: true,
-      name: true,
+function createStudentAssignmentInclude(studentId: string) {
+  return {
+    class: {
+      select: {
+        id: true,
+        name: true,
+      },
     },
-  },
-  wordSet: {
-    include: {
-      words: true,
+    wordSet: {
+      include: {
+        words: true,
+      },
     },
-  },
-};
+    practiceAttempts: {
+      where: {
+        studentId,
+      },
+      select: {
+        studentId: true,
+        wordId: true,
+        status: true,
+      },
+    },
+  };
+}
 
-const studentWordSetInclude = {
-  class: {
-    include: {
-      enrollments: true,
+function createStudentWordSetInclude(studentId: string) {
+  return {
+    class: {
+      include: {
+        enrollments: true,
+      },
     },
-  },
-  wordSet: {
-    include: {
-      words: {
-        orderBy: {
-          createdAt: 'desc' as const,
+    wordSet: {
+      include: {
+        words: {
+          orderBy: {
+            createdAt: 'desc' as const,
+          },
         },
       },
     },
-  },
-};
+    practiceAttempts: {
+      where: {
+        studentId,
+      },
+      select: {
+        studentId: true,
+        wordId: true,
+        status: true,
+      },
+    },
+  };
+}
 
 function mapAssignment(assignment: AssignmentRecord): AssignmentDto {
   return {
@@ -262,14 +294,17 @@ function mapAssignment(assignment: AssignmentRecord): AssignmentDto {
 function mapStudentAssignment(
   assignment: StudentAssignmentRecord,
 ): StudentAssignedWordSetDto {
+  const completedWords = countPracticedWords(assignment.practiceAttempts);
+  const totalWords = assignment.wordSet.words.length;
+
   return {
     id: assignment.id,
     classId: assignment.class.id,
     className: assignment.class.name,
     title: assignment.wordSet.title,
-    words: assignment.wordSet.words.length,
-    completedWords: 0,
-    progress: 0,
+    words: totalWords,
+    completedWords,
+    progress: calculatePercentage(completedWords, totalWords),
     dueLabel: 'No due date',
   };
 }
@@ -277,6 +312,8 @@ function mapStudentAssignment(
 function mapStudentWordSetDetails(
   assignment: StudentWordSetAssignmentRecord,
 ): StudentWordSetDetailsDto {
+  const completedWords = countPracticedWords(assignment.practiceAttempts);
+
   return {
     id: assignment.wordSet.id,
     classId: assignment.class.id,
@@ -285,23 +322,47 @@ function mapStudentWordSetDetails(
     description: assignment.wordSet.description,
     words: assignment.wordSet.words.length,
     assignedStudents: assignment.class.enrollments.length,
-    averageProgress: 0,
+    averageProgress: calculatePercentage(
+      completedWords,
+      assignment.wordSet.words.length,
+    ),
     createdAt: assignment.wordSet.createdAt.toISOString(),
-    wordsList: assignment.wordSet.words.map(mapStudentWord),
+    wordsList: assignment.wordSet.words.map((word) =>
+      mapStudentWord(word, assignment.practiceAttempts),
+    ),
   };
 }
 
 function mapStudentWord(
   word: StudentWordSetAssignmentRecord['wordSet']['words'][number],
+  attempts: PracticeAttemptRecord[],
 ): StudentWordDto {
+  const wordAttempts = attempts.filter((attempt) => attempt.wordId === word.id);
+  const correctAnswers = wordAttempts.filter(
+    (attempt) => attempt.status === 'CORRECT',
+  ).length;
+  const wrongAnswers = wordAttempts.length - correctAnswers;
+
   return {
     id: word.id,
     term: word.term,
     translation: word.translation,
     exampleSentence: word.exampleSentence,
     transcription: word.transcription,
-    masteryLevel: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
+    masteryLevel: calculatePercentage(correctAnswers, wordAttempts.length),
+    correctAnswers,
+    wrongAnswers,
   };
+}
+
+function countPracticedWords(attempts: PracticeAttemptRecord[]) {
+  return new Set(attempts.map((attempt) => attempt.wordId)).size;
+}
+
+function calculatePercentage(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
 }
