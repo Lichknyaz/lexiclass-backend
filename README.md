@@ -78,14 +78,27 @@ teacher@example.com / password
 student@example.com / password
 ```
 
+Additional demo students, all using password `password`:
+
+```text
+olena.student@example.com
+andrii.student@example.com
+kateryna.student@example.com
+maksym.student@example.com
+iryna.student@example.com
+bohdan.student@example.com
+sofia.student@example.com
+dmytro.student@example.com
+```
+
 Demo class invite codes:
 
 ```text
-A2-7KQ9
-B1-4MVP
+A2-7KQ9 - English A2 - Travel
+B1-4MVP - English B1 - Classroom Communication
 ```
 
-The seed creates one teacher, two students, two classes, two word sets, words, enrollments, assignments, and sample practice attempts for analytics.
+The seed resets the demo teacher's classes, word sets, assignments, enrollments, and practice attempts so demo data stays clean after E2E or manual testing. It creates two classes, three English word sets with Ukrainian translations, multiple students in each class, and varied practice attempts for meaningful teacher analytics.
 
 ## Verification
 
