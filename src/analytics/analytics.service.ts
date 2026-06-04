@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { AnswerStatus, Class } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { AnalyticsQueryDto } from './dto/analytics-query.dto';
+import {
+  AnalyticsProblemWordWindow,
+  AnalyticsQueryDto,
+} from './dto/analytics-query.dto';
 
 interface AnalyticsClassRecord extends Class {
   enrollments: Array<{
@@ -43,6 +46,7 @@ interface AttemptWithWordRecord {
   wordId: string;
   studentId: string;
   status: AnswerStatus;
+  answeredAt: Date;
   word: {
     id: string;
     term: string;
@@ -57,6 +61,10 @@ interface ProblemWordDto {
   wrongAnswers: number;
   correctAnswers: number;
   affectedStudents: number;
+}
+
+interface ProblemWordOptions {
+  window: AnalyticsProblemWordWindow;
 }
 
 interface StudentAnalyticsDto {
@@ -119,6 +127,8 @@ export class AnalyticsService {
       include: analyticsClassInclude,
       orderBy: { createdAt: 'desc' },
     });
+    const problemWordWindow = query.problemWordWindow ?? '14';
+    const problemWordWindowStart = getProblemWordWindowStart(problemWordWindow);
     const attempts = await this.prisma.practiceAttempt.findMany({
       where: {
         assignment: {
@@ -127,6 +137,9 @@ export class AnalyticsService {
             ...(query.classId ? { id: query.classId } : {}),
           },
         },
+        ...(problemWordWindowStart
+          ? { answeredAt: { gte: problemWordWindowStart } }
+          : {}),
       },
       include: {
         word: {
@@ -138,7 +151,9 @@ export class AnalyticsService {
         },
       },
     });
-    const problemWords = mapProblemWords(attempts);
+    const problemWords = mapProblemWords(attempts, {
+      window: problemWordWindow,
+    });
     const classProgress = classes.map((classItem) =>
       mapClassAnalytics(classItem, problemWords),
     );
@@ -273,7 +288,10 @@ function mapStudentAnalytics(
   };
 }
 
-function mapProblemWords(attempts: AttemptWithWordRecord[]): ProblemWordDto[] {
+function mapProblemWords(
+  attempts: AttemptWithWordRecord[],
+  options: ProblemWordOptions,
+): ProblemWordDto[] {
   const words = new Map<
     string,
     {
@@ -307,7 +325,7 @@ function mapProblemWords(attempts: AttemptWithWordRecord[]): ProblemWordDto[] {
   }
 
   return Array.from(words.values())
-    .filter((word) => word.wrongAnswers > 0)
+    .filter((word) => isProblemWord(word, options))
     .sort((first, second) => second.wrongAnswers - first.wrongAnswers)
     .map((word) => ({
       id: word.id,
@@ -317,6 +335,37 @@ function mapProblemWords(attempts: AttemptWithWordRecord[]): ProblemWordDto[] {
       correctAnswers: word.correctAnswers,
       affectedStudents: word.affectedStudentIds.size,
     }));
+}
+
+function isProblemWord(
+  word: {
+    wrongAnswers: number;
+    correctAnswers: number;
+  },
+  options: ProblemWordOptions,
+) {
+  if (word.wrongAnswers === 0) {
+    return false;
+  }
+
+  if (options.window === 'all') {
+    return true;
+  }
+
+  const totalAnswers = word.wrongAnswers + word.correctAnswers;
+
+  return totalAnswers > 0 && word.wrongAnswers / totalAnswers >= 0.4;
+}
+
+function getProblemWordWindowStart(window: AnalyticsProblemWordWindow) {
+  if (window === 'all') {
+    return null;
+  }
+
+  const start = new Date();
+  start.setDate(start.getDate() - Number(window));
+
+  return start;
 }
 
 function countDistinctStudents(classes: AnalyticsClassRecord[]) {

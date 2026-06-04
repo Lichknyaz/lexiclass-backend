@@ -43,6 +43,39 @@ describe('AnalyticsService', () => {
           translation: 'come',
         },
       }),
+      createAttempt({
+        id: 'attempt-5',
+        wordId: 'word-3',
+        studentId: 'student-1',
+        status: 'WRONG',
+        word: {
+          id: 'word-3',
+          term: 'resolved',
+          translation: 'fixed',
+        },
+      }),
+      createAttempt({
+        id: 'attempt-6',
+        wordId: 'word-3',
+        studentId: 'student-1',
+        status: 'CORRECT',
+        word: {
+          id: 'word-3',
+          term: 'resolved',
+          translation: 'fixed',
+        },
+      }),
+      createAttempt({
+        id: 'attempt-7',
+        wordId: 'word-3',
+        studentId: 'student-1',
+        status: 'CORRECT',
+        word: {
+          id: 'word-3',
+          term: 'resolved',
+          translation: 'fixed',
+        },
+      }),
     ]);
 
     const result = await service.getTeacherAnalytics('teacher-1', {});
@@ -59,6 +92,9 @@ describe('AnalyticsService', () => {
             teacherId: 'teacher-1',
           },
         },
+        answeredAt: {
+          gte: expect.any(Date),
+        },
       },
       include: {
         word: {
@@ -70,6 +106,13 @@ describe('AnalyticsService', () => {
         },
       },
     });
+    expect(
+      (
+        prisma.practiceAttempt.findMany.mock.calls[0]?.[0] as {
+          where: { answeredAt: { gte: Date } };
+        }
+      ).where.answeredAt.gte.getTime(),
+    ).toBeLessThanOrEqual(Date.now());
     expect(result).toEqual({
       totalStudents: 2,
       totalWordSets: 1,
@@ -165,6 +208,63 @@ describe('AnalyticsService', () => {
       include: expect.any(Object),
       orderBy: { createdAt: 'desc' },
     });
+  });
+
+  it('returns every historical wrong word in all-history mode', async () => {
+    prisma.class.findMany.mockResolvedValue([createClassRecord()]);
+    prisma.practiceAttempt.findMany.mockResolvedValue([
+      createAttempt({
+        id: 'attempt-1',
+        wordId: 'word-1',
+        studentId: 'student-1',
+        status: 'WRONG',
+      }),
+      createAttempt({
+        id: 'attempt-2',
+        wordId: 'word-1',
+        studentId: 'student-1',
+        status: 'CORRECT',
+      }),
+      createAttempt({
+        id: 'attempt-3',
+        wordId: 'word-1',
+        studentId: 'student-1',
+        status: 'CORRECT',
+      }),
+    ]);
+
+    const result = await service.getTeacherAnalytics('teacher-1', {
+      problemWordWindow: 'all',
+    });
+
+    expect(prisma.practiceAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        assignment: {
+          class: {
+            teacherId: 'teacher-1',
+          },
+        },
+      },
+      include: {
+        word: {
+          select: {
+            id: true,
+            term: true,
+            translation: true,
+          },
+        },
+      },
+    });
+    expect(result.problemWords).toEqual([
+      {
+        id: 'word-1',
+        term: 'depart',
+        translation: 'leave',
+        wrongAnswers: 1,
+        correctAnswers: 2,
+        affectedStudents: 1,
+      },
+    ]);
   });
 
   it('rejects analytics for another teacher class filter', async () => {
@@ -271,6 +371,7 @@ function createAttempt(input: {
   wordId: string;
   studentId: string;
   status: 'CORRECT' | 'WRONG';
+  answeredAt?: Date;
   word?: {
     id: string;
     term: string;
@@ -287,5 +388,6 @@ function createAttempt(input: {
       term: 'depart',
       translation: 'leave',
     },
+    answeredAt: input.answeredAt ?? new Date(),
   };
 }
