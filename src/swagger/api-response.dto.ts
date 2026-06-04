@@ -136,6 +136,41 @@ export class ProblemWordResponseDto {
   affectedStudents!: number;
 }
 
+export class ReviewWordResponseDto {
+  @ApiProperty({ example: 'cmat1word0001' })
+  wordId!: string;
+
+  @ApiProperty({ example: 'arrive' })
+  term!: string;
+
+  @ApiProperty({ example: 'to arrive' })
+  translation!: string;
+
+  @ApiPropertyOptional({ example: 'uh-RYV', nullable: true })
+  transcription!: string | null;
+
+  @ApiProperty({ example: 'We arrive at the airport at 9 AM.' })
+  exampleSentence!: string;
+
+  @ApiProperty({ example: 'cmat1wordset0001' })
+  sourceWordSetId!: string;
+
+  @ApiProperty({ example: 'Travel Basics' })
+  sourceWordSetTitle!: string;
+
+  @ApiProperty({ example: 3 })
+  wrongAnswers!: number;
+
+  @ApiProperty({ example: 2 })
+  correctAnswers!: number;
+
+  @ApiProperty({ example: 2 })
+  affectedStudents!: number;
+
+  @ApiProperty({ example: 60 })
+  wrongRate!: number;
+}
+
 export class ClassAssignedWordSetResponseDto {
   @ApiProperty({ example: 'cmat1assignment0001' })
   id!: string;
@@ -286,6 +321,14 @@ export class AssignmentResponseDto {
 
   @ApiProperty({ example: '2026-05-26T10:00:00.000Z' })
   assignedAt!: string;
+}
+
+export class CreateReviewWordSetResponseDto {
+  @ApiProperty({ type: WordSetSummaryResponseDto })
+  wordSet!: WordSetSummaryResponseDto;
+
+  @ApiPropertyOptional({ type: AssignmentResponseDto, nullable: true })
+  assignment!: AssignmentResponseDto | null;
 }
 
 export class PracticeWordResultResponseDto {

@@ -24,8 +24,10 @@ import type { AuthUserDto } from '../auth/types';
 import {
   ClassDetailsResponseDto,
   ClassSummaryResponseDto,
+  CreateReviewWordSetResponseDto,
   DeleteIdResponseDto,
   DeleteStudentResponseDto,
+  ReviewWordResponseDto,
   StudentClassResponseDto,
   StudentResponseDto,
 } from '../swagger/api-response.dto';
@@ -61,7 +63,7 @@ export class ClassesController {
 
   @Get(':classId/review-words')
   @ApiOperation({ summary: 'List class words available for review set creation' })
-  @ApiOkResponse({ type: [Object] })
+  @ApiOkResponse({ type: [ReviewWordResponseDto] })
   listClassReviewWords(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
@@ -72,7 +74,7 @@ export class ClassesController {
 
   @Post(':classId/review-word-sets')
   @ApiOperation({ summary: 'Create a review word set from class words' })
-  @ApiCreatedResponse({ type: Object })
+  @ApiCreatedResponse({ type: CreateReviewWordSetResponseDto })
   createClassReviewWordSet(
     @CurrentUser() user: AuthUserDto,
     @Param('classId') classId: string,
