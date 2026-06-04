@@ -42,6 +42,13 @@ Run the API in development:
 pnpm dev
 ```
 
+Production start requires a build first:
+
+```powershell
+pnpm build
+pnpm start
+```
+
 The API listens on:
 
 ```text
@@ -60,7 +67,7 @@ Interactive API documentation:
 http://localhost:4000/api/docs
 ```
 
-Use the Swagger `Authorize` button with the `accessToken` returned by login.
+Use the Swagger `Authorize` button with the `accessToken` returned by `POST /api/v1/auth/login`.
 
 ## Demo Seed Data
 
@@ -88,13 +95,19 @@ pnpm test
 pnpm build
 ```
 
-With PostgreSQL seeded and the API running on port `4000`, run the smoke flow:
+With PostgreSQL seeded and the API running on port `4000`, run the smoke flow in another terminal:
 
 ```powershell
 pnpm smoke
 ```
 
 The smoke script checks health, teacher login/classes, student login/assignments, student word-set details, practice submission, student progress, and teacher analytics.
+
+The same script can target another API URL:
+
+```powershell
+pnpm smoke -- -BaseUrl http://localhost:4000/api/v1
+```
 
 ## Prisma Commands
 
