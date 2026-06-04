@@ -99,6 +99,39 @@ describe('WordSetsService', () => {
     });
   });
 
+  it('maps teacher word-set word progress from saved practice attempts', async () => {
+    prisma.wordSet.findUnique.mockResolvedValue(
+      createWordSetDetailsRecord({
+        practiceAttempts: [
+          {
+            studentId: 'student-1',
+            wordId: 'word-1',
+            status: 'CORRECT',
+          },
+          {
+            studentId: 'student-2',
+            wordId: 'word-1',
+            status: 'WRONG',
+          },
+        ],
+      }),
+    );
+
+    const result = await service.getWordSetDetails('teacher-1', 'word-set-1');
+
+    expect(result.averageProgress).toBe(50);
+    expect(result.wordsList[0]).toEqual({
+      id: 'word-1',
+      term: 'depart',
+      translation: 'leave',
+      exampleSentence: 'We depart at noon.',
+      transcription: null,
+      masteryLevel: 50,
+      correctAnswers: 1,
+      wrongAnswers: 1,
+    });
+  });
+
   it('rejects details for another teacher word set', async () => {
     prisma.wordSet.findUnique.mockResolvedValue({
       ...createWordSetDetailsRecord(),
@@ -288,7 +321,15 @@ function createMockPrisma(): MockPrisma {
   };
 }
 
-function createWordSetDetailsRecord() {
+function createWordSetDetailsRecord({
+  practiceAttempts = [],
+}: {
+  practiceAttempts?: Array<{
+    studentId: string;
+    wordId: string;
+    status: 'CORRECT' | 'WRONG';
+  }>;
+} = {}) {
   return {
     id: 'word-set-1',
     title: 'Travel',
@@ -310,6 +351,7 @@ function createWordSetDetailsRecord() {
         class: {
           enrollments: [{ studentId: 'student-1' }, { studentId: 'student-2' }],
         },
+        practiceAttempts,
       },
     ],
   };

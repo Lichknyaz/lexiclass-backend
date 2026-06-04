@@ -31,6 +31,7 @@ interface WordSetDetailsRecord extends WordSet {
     class: {
       enrollments: unknown[];
     };
+    practiceAttempts: PracticeAttemptRecord[];
   }>;
 }
 
@@ -40,6 +41,11 @@ interface WordRecord {
   translation: string;
   exampleSentence: string;
   transcription: string | null;
+}
+
+interface PracticeAttemptRecord {
+  wordId: string;
+  status: 'CORRECT' | 'WRONG';
 }
 
 export interface WordSetSummaryDto {
@@ -298,6 +304,12 @@ const wordSetDetailsInclude = {
           enrollments: true,
         },
       },
+      practiceAttempts: {
+        select: {
+          wordId: true,
+          status: true,
+        },
+      },
     },
   },
 };
@@ -315,6 +327,10 @@ function mapWordSetSummary(
 }
 
 function mapWordSetDetails(wordSet: WordSetDetailsRecord): WordSetDetailsDto {
+  const wordsList = wordSet.words.map((word) =>
+    mapWordWithProgress(word, getAttemptsForWord(wordSet, word.id)),
+  );
+
   return {
     id: wordSet.id,
     classId: '',
@@ -323,22 +339,36 @@ function mapWordSetDetails(wordSet: WordSetDetailsRecord): WordSetDetailsDto {
     description: wordSet.description,
     words: wordSet.words.length,
     assignedStudents: countAssignedStudents(wordSet),
-    averageProgress: 0,
+    averageProgress: calculateAverage(
+      wordsList.map((word) => word.masteryLevel),
+    ),
     createdAt: wordSet.createdAt.toISOString(),
-    wordsList: wordSet.words.map(mapWord),
+    wordsList,
   };
 }
 
 function mapWord(word: WordRecord): WordDto {
+  return mapWordWithProgress(word, []);
+}
+
+function mapWordWithProgress(
+  word: WordRecord,
+  attempts: PracticeAttemptRecord[],
+): WordDto {
+  const correctAnswers = attempts.filter(
+    (attempt) => attempt.status === 'CORRECT',
+  ).length;
+  const wrongAnswers = attempts.length - correctAnswers;
+
   return {
     id: word.id,
     term: word.term,
     translation: word.translation,
     exampleSentence: word.exampleSentence,
     transcription: word.transcription,
-    masteryLevel: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
+    masteryLevel: calculatePercentage(correctAnswers, attempts.length),
+    correctAnswers,
+    wrongAnswers,
   };
 }
 
@@ -368,4 +398,31 @@ function countAssignedStudents(wordSet: WordSetDetailsRecord) {
   }
 
   return studentIds.size;
+}
+
+function getAttemptsForWord(
+  wordSet: WordSetDetailsRecord,
+  wordId: string,
+): PracticeAttemptRecord[] {
+  return wordSet.assignments.flatMap((assignment) =>
+    assignment.practiceAttempts.filter((attempt) => attempt.wordId === wordId),
+  );
+}
+
+function calculatePercentage(value: number, total: number) {
+  if (total === 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function calculateAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    values.reduce((total, value) => total + value, 0) / values.length,
+  );
 }
