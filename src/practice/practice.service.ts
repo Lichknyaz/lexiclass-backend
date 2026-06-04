@@ -21,6 +21,7 @@ export interface PracticeSessionResultDto {
 }
 
 interface PracticeAttemptWithWordRecord {
+  assignmentId: string;
   wordId: string;
   status: AnswerStatus;
   answeredAt: Date;
@@ -33,6 +34,7 @@ interface PracticeAttemptWithWordRecord {
 
 export interface StudentProgressWordDto {
   id: string;
+  assignmentId: string;
   term: string;
   translation: string;
   masteryLevel: number;
@@ -185,6 +187,7 @@ function mapStudentWordProgress(
     string,
     {
       id: string;
+      assignmentId: string;
       term: string;
       translation: string;
       correctCount: number;
@@ -196,6 +199,7 @@ function mapStudentWordProgress(
   for (const attempt of attempts) {
     const existing = progressByWord.get(attempt.wordId) ?? {
       id: attempt.word.id,
+      assignmentId: attempt.assignmentId,
       term: attempt.word.term,
       translation: attempt.word.translation,
       correctCount: 0,
@@ -211,6 +215,7 @@ function mapStudentWordProgress(
 
     if (attempt.answeredAt > existing.lastPracticedAt) {
       existing.lastPracticedAt = attempt.answeredAt;
+      existing.assignmentId = attempt.assignmentId;
     }
 
     progressByWord.set(attempt.wordId, existing);
@@ -226,6 +231,7 @@ function mapStudentWordProgress(
 
       return {
         id: progress.id,
+        assignmentId: progress.assignmentId,
         term: progress.term,
         translation: progress.translation,
         masteryLevel:

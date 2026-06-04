@@ -326,6 +326,9 @@ export class StudentProgressWordResponseDto {
   @ApiProperty({ example: 'cmat1word0001' })
   id!: string;
 
+  @ApiProperty({ example: 'cmat1assignment0001' })
+  assignmentId!: string;
+
   @ApiProperty({ example: 'journey' })
   term!: string;
 

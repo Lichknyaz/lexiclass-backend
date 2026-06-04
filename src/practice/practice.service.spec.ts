@@ -187,6 +187,7 @@ describe('PracticeService', () => {
     expect(result).toEqual([
       {
         id: 'word-2',
+        assignmentId: 'assignment-1',
         term: 'arrive',
         translation: 'come',
         masteryLevel: 100,
@@ -196,6 +197,7 @@ describe('PracticeService', () => {
       },
       {
         id: 'word-1',
+        assignmentId: 'assignment-1',
         term: 'depart',
         translation: 'leave',
         masteryLevel: 50,
@@ -231,6 +233,7 @@ function createMockPrisma(): MockPrisma {
 
 function createPracticeAttemptRecord(input: {
   id: string;
+  assignmentId?: string;
   wordId: string;
   status: 'CORRECT' | 'WRONG';
   answeredAt: Date;
@@ -242,6 +245,7 @@ function createPracticeAttemptRecord(input: {
 }) {
   return {
     id: input.id,
+    assignmentId: input.assignmentId ?? 'assignment-1',
     wordId: input.wordId,
     status: input.status,
     answeredAt: input.answeredAt,
