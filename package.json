@@ -4,15 +4,20 @@
   "private": true,
   "description": "Backend API for LexiClass.",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
+    "deploy:build": "prisma generate && nest build",
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "jest",
     "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
